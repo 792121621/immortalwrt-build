@@ -1,4 +1,4 @@
-name: Auto Fetch OpenWrt/ImmortalWrt Config
+name: Auto Generate OpenWrt/ImmortalWrt Config
 
 on:
   workflow_dispatch:
@@ -6,152 +6,116 @@ on:
       firmware:
         description: '选择固件类型'
         required: true
-        default: 'all'
+        default: 'immortalwrt-master'
         type: choice
         options:
-          - all
           - openwrt-main
           - immortalwrt-master
       device:
         description: '选择设备型号'
         required: true
-        default: 'all'
+        default: 'xiaomi_mi-router-wr30u-stock'
         type: choice
         options:
-          - all
           - xiaomi_mi-router-wr30u-stock
           - xiaomi_mi-router-wr30u-ubootmod
           - xiaomi_mi-router-wr30u-112m-nmbm
           - xiaomi_mi-router-cr6608
       version:
-        description: '指定版本（为空则使用最新版本）'
+        description: '指定版本（为空则使用最新版）'
         required: false
         type: string
 
 jobs:
-  fetch-config:
+  generate-config:
     runs-on: ubuntu-24.04
     steps:
-      # 检出当前仓库
-      - name: 检出代码
+      # 检出仓库代码
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       # 安装依赖
-      - name: 安装编译依赖
+      - name: Install dependencies
         run: |
           sudo apt update
           sudo apt install -y build-essential clang flex bison g++ gawk \
           gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
           python3-setuptools rsync swig unzip zlib1g-dev file wget
 
-      # 设置环境变量并克隆固件仓库
-      - name: 设置固件仓库和克隆
+      # 设置固件源和克隆仓库
+      - name: Clone firmware repository
         run: |
-          # 定义固件和设备列表
-          FIRMWARES=("${{ inputs.firmware }}")
-          DEVICES=("${{ inputs.device }}")
-          if [ "${{ inputs.firmware }}" = "all" ]; then
-            FIRMWARES=("openwrt-main" "immortalwrt-master")
+          if [ "${{ github.event.inputs.firmware }}" = "openwrt-main" ]; then
+            REPO_URL="https://github.com/openwrt/openwrt.git"
+            BRANCH="main"
+          else
+            REPO_URL="https://github.com/immortalwrt/immortalwrt.git"
+            BRANCH="master"
           fi
-          if [ "${{ inputs.device }}" = "all" ]; then
-            DEVICES=("xiaomi_mi-router-wr30u-stock" "xiaomi_mi-router-wr30u-ubootmod" \
-                     "xiaomi_mi-router-wr30u-112m-nmbm" "xiaomi_mi-router-cr6608")
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            git clone --depth 1 -b "${{ github.event.inputs.version }}" $REPO_URL openwrt
+          else
+            git clone --depth 1 -b $BRANCH $REPO_URL openwrt
           fi
 
-          # 标记是否有配置文件生成
-          HAS_CONFIG=false
-
-          # 遍历固件和设备
-          for fw in "${FIRMWARES[@]}"; do
-            for dev in "${DEVICES[@]}"; do
-              echo "处理 $fw 的 $dev"
-              
-              # 根据固件类型设置仓库地址
-              if [ "$fw" = "openwrt-main" ]; then
-                REPO="https://github.com/openwrt/openwrt.git"
-                BRANCH="main"
-              elif [ "$fw" = "immortalwrt-master" ]; then
-                REPO="https://github.com/immortalwrt/immortalwrt.git"
-                BRANCH="master"
-              fi
-
-              # 如果指定了版本，使用指定的版本
-              if [ -n "${{ inputs.version }}" ]; then
-                BRANCH="${{ inputs.version }}"
-              fi
-
-              # 克隆仓库到临时目录
-              mkdir -p temp/$fw/$dev
-              git clone --depth 1 -b $BRANCH $REPO temp/$fw/$dev/source || {
-                echo "克隆 $fw ($BRANCH) 失败，跳过"
-                continue
-              }
-              
-              # 进入源码目录
-              cd temp/$fw/$dev/source
-
-              # 设置设备目标（需要根据设备手动指定目标，示例假设为 mediatek 架构）
-              echo "CONFIG_TARGET_mediatek=y" > .config
-              echo "CONFIG_TARGET_mediatek_filogic=y" >> .config
-              echo "CONFIG_TARGET_mediatek_filogic_DEVICE_${dev}=y" >> .config
-
-              # 更新 feeds 和安装依赖
-              ./scripts/feeds update -a || {
-                echo "更新 feeds 失败，跳过 $dev"
-                cd ${{ github.workspace }}
-                rm -rf temp/$fw/$dev
-                continue
-              }
-              ./scripts/feeds install -a
-
-              # 生成默认配置
-              make defconfig || {
-                echo "生成 defconfig 失败，跳过 $dev"
-                cd ${{ github.workspace }}
-                rm -rf temp/$fw/$dev
-                continue
-              }
-
-              # 检查 .config 是否存在
-              if [ -f .config ]; then
-                # 保存配置文件到指定路径
-                mkdir -p ${{ github.workspace }}/config/$fw/$dev
-                cp .config ${{ github.workspace }}/config/$fw/$dev/config
-                echo "已保存配置文件: config/$fw/$dev/config"
-                HAS_CONFIG=true
-              else
-                echo "未找到 .config 文件，跳过 $dev"
-              fi
-              
-              # 清理临时目录
-              cd ${{ github.workspace }}
-              rm -rf temp/$fw/$dev
-            done
-          done
-
-          # 保存 HAS_CONFIG 状态到环境变量
-          echo "HAS_CONFIG=$HAS_CONFIG" >> $GITHUB_ENV
-
-      # 调试：显示文件状态
-      - name: 调试文件状态
+      # 进入固件目录并更新 feeds
+      - name: Update and install feeds
+        working-directory: ./openwrt
         run: |
-          echo "当前工作目录: $(pwd)"
-          echo "config 目录内容:"
-          ls -R config/
-          echo "Git 状态:"
-          git status
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
 
-      # 提交配置文件到仓库
-      - name: 提交配置文件
-        if: env.HAS_CONFIG == 'true'
+      # 自动选择设备架构并生成设备特定的 .config 文件
+      - name: Generate device-specific config
+        working-directory: ./openwrt
+        run: |
+          # 根据设备型号设置目标架构、子目标和设备配置
+          case "${{ github.event.inputs.device }}" in
+            "xiaomi_mi-router-wr30u-stock")
+              TARGET="mediatek"
+              SUBTARGET="filogic"
+              DEVICE="xiaomi_mi-router-wr30u-stock"
+              ;;
+            "xiaomi_mi-router-wr30u-ubootmod")
+              TARGET="mediatek"
+              SUBTARGET="filogic"
+              DEVICE="xiaomi_mi-router-wr30u-ubootmod"
+              ;;
+            "xiaomi_mi-router-wr30u-112m-nmbm")
+              TARGET="mediatek"
+              SUBTARGET="filogic"
+              DEVICE="xiaomi_mi-router-wr30u-112m-nmbm"
+              ;;
+            "xiaomi_mi-router-cr6608")
+              TARGET="mediatek"
+              SUBTARGET="mt7622"
+              DEVICE="xiaomi_mi-router-cr6608"
+              ;;
+            *)
+              echo "未知设备型号"
+              exit 1
+              ;;
+          esac
+
+          # 创建初始 .config 文件并设置目标架构和设备
+          echo "CONFIG_TARGET_${TARGET}=y" > .config
+          echo "CONFIG_TARGET_${TARGET}_${SUBTARGET}=y" >> .config
+          echo "CONFIG_TARGET_${TARGET}_${SUBTARGET}_${DEVICE}=y" >> .config
+
+          # 运行 make defconfig 生成完整的设备特定配置文件
+          make defconfig
+
+          # 保存配置文件到指定路径
+          mkdir -p ../config/${{ github.event.inputs.firmware }}/${{ github.event.inputs.device }}
+          cp .config ../config/${{ github.event.inputs.firmware }}/${{ github.event.inputs.device }}/config
+
+      # 提交生成的配置文件到仓库
+      - name: Commit and push config
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add -A
-          git commit -m "自动更新 ${{ inputs.firmware }} ${{ inputs.device }} 配置文件" || {
-            echo "没有文件需要提交"
-            exit 0
-          }
-          git push
+          git add config/
+          git commit -m "Add config for ${{ github.event.inputs.firmware }}/${{ github.event.inputs.device }}"
+          git push origin main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
