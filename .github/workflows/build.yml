@@ -1,8 +1,8 @@
 #============================================================================================
-# 描述：为特定小米设备编译 OpenWrt/ImmortalWrt 固件并打包 IMG
+# Description: Compile OpenWrt/ImmortalWrt firmware for Xiaomi WR30U and CR6608 devices
 #============================================================================================
 
-name: 编译小米 OpenWrt 固件
+name: Compile OpenWrt Firmware
 
 on:
   repository_dispatch:
@@ -19,17 +19,18 @@ on:
       openwrt_board:
         description: "选择设备型号"
         required: true
-        default: "xiaomi_wr30u_stock"
+        default: "all"
         type: choice
         options:
+          - all
           - xiaomi_wr30u_stock
           - xiaomi_wr30u_ubootmod
           - xiaomi_wr30u_nmbm
           - xiaomi_cr6608
       openwrt_version:
-        description: "指定版本（例如 v23.05.3），留空使用最新版"
+        description: "指定版本标签（留空使用最新版本）"
         required: false
-        default: ""
+        type: string
 
 env:
   FEEDS_CONF: config/${{ inputs.source_branch }}/feeds.conf.default
@@ -41,56 +42,59 @@ env:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    # 限制工作流仅允许仓库所有者运行
     if: ${{ github.event.repository.owner.id }} == ${{ github.event.sender.id }}
 
     steps:
-      # 步骤 1：检出仓库代码
-      - name: 检出仓库
+      # 步骤1：检出仓库代码
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          ref: ${{ github.event.repository.head_ref || github.ref }}
 
-      # 步骤 2：在 Ubuntu 24.04 LTS 上初始化编译环境
+      # 步骤2：初始化编译环境并安装依赖
+      # - 清理Docker镜像和不必要的工具
+      # - 更新软件包列表并安装指定的编译依赖
+      # - 清理apt缓存，创建工作目录，设置时区
       - name: 初始化编译环境
         id: init
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          # 清理 Docker 镜像以释放空间
+          # 清理Docker镜像
           docker rmi `docker images -q` 2>/dev/null || true
-          # 删除不必要的工具和目录
+          [[ -n "${AGENT_TOOLSDIRECTORY}" ]] && sudo rm -rf "${AGENT_TOOLSDIRECTORY}"
           sudo rm -rf /usr/share/dotnet /etc/apt/sources.list.d /usr/local/lib/android 2>/dev/null
-          # 配置 Ubuntu 24.04 的软件源
-          sudo bash -c 'echo "deb http://archive.ubuntu.com/ubuntu noble main restricted universe multiverse" > /etc/apt/sources.list'
-          sudo bash -c 'echo "deb http://archive.ubuntu.com/ubuntu noble-updates main restricted universe multiverse" >> /etc/apt/sources.list'
-          sudo bash -c 'echo "deb http://archive.ubuntu.com/ubuntu noble-security main restricted universe multiverse" >> /etc/apt/sources.list'
-          # 更新软件包列表
-          sudo apt-get -y update || { echo "Failed to update package lists"; exit 1; }
-          # 安装 OpenWrt/ImmortalWrt 编译所需的依赖，适配 Ubuntu 24.04
-          sudo apt-get -y install \
-            build-essential clang flex bison g++ gawk \
-            gettext git libncurses5-dev libssl-dev \
-            python3 python3-lib2to3 python3-pyelftools \
-            rsync unzip zlib1g-dev file wget curl \
-            subversion swig cpio bc libelf-dev libffi-dev libzstd-dev \
-            || { echo "Failed to install dependencies"; exit 1; }
-          # 清理软件包缓存以减少磁盘使用
-          sudo apt-get -y autoremove --purge
-          sudo apt-get clean
+          
+          # 更新软件包并安装依赖
+          sudo apt update
+          sudo apt install -y build-essential clang flex bison g++ gawk \
+            gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
+            python3-setuptools rsync swig unzip zlib1g-dev file wget
+          
+          # 清理apt缓存
+          sudo apt autoremove -y --purge
+          sudo apt clean
+          
           # 创建工作目录
           sudo mkdir -p /workdir
           sudo chown ${USER}:${GROUPS} /workdir
+          
           # 设置时区
           sudo timedatectl set-timezone "${TZ}"
+          
           echo "status=success" >> ${GITHUB_OUTPUT}
 
-      # 步骤 3：克隆 OpenWrt 或 ImmortalWrt 源码
-      - name: 克隆源码
+      # 步骤3：根据选择的分支克隆源码
+      # - 根据输入的分支选择OpenWrt或ImmortalWrt仓库
+      # - 如果指定了版本标签，则克隆指定版本，否则使用最新版本
+      # - 创建符号链接并设置发布标签
+      - name: 克隆源码 [ ${{ inputs.source_branch }} ]
         id: codes
         working-directory: /workdir
         if: ${{ steps.init.outputs.status == 'success' && !cancelled() }}
         run: |
-          # 根据选择的源码分支配置仓库
+          # 根据输入确定仓库和分支
           if [[ "${{ inputs.source_branch }}" == "openwrt-main" ]]; then
               REPO_URL="https://github.com/openwrt/openwrt"
               REPO_BRANCH="main"
@@ -100,97 +104,117 @@ jobs:
               REPO_BRANCH="master"
               TAGS_NAME="immortalwrt"
           else
-              echo "无效的源码分支。"
+              echo "无效的源码分支选择。"
               exit 1
           fi
 
-          # 如果指定了版本，则使用该版本，否则使用最新版
+          # 如果指定了版本标签则使用，否则克隆最新版本
           if [[ -n "${{ inputs.openwrt_version }}" ]]; then
-              REPO_BRANCH="${{ inputs.openwrt_version }}"
+              git clone -q --single-branch --depth=1 --branch=${{ inputs.openwrt_version }} ${REPO_URL} openwrt
+          else
+              git clone -q --single-branch --depth=1 --branch=${REPO_BRANCH} ${REPO_URL} openwrt
           fi
 
-          # 克隆源码
-          git clone -q --single-branch --depth=1 --branch=${REPO_BRANCH} ${REPO_URL} openwrt
+          # 链接克隆的仓库到工作空间
           ln -sf /workdir/openwrt ${GITHUB_WORKSPACE}/openwrt
 
           # 设置发布标签
-          echo "build_tag=${TAGS_NAME}_${{ inputs.openwrt_board }}_$(date +%Y.%m)" >> ${GITHUB_OUTPUT}
+          echo "build_tag=OpenWrt_${TAGS_NAME}_$(date +%Y.%m)" >> ${GITHUB_OUTPUT}
           echo -e "REPO_URL: [ ${REPO_URL} ]\nREPO_BRANCH: [ ${REPO_BRANCH} ]\nTAGS_NAME: [ ${TAGS_NAME} ]"
           df -hT ${PWD}
           echo "status=success" >> ${GITHUB_OUTPUT}
 
-      # 步骤 4：加载自定义 feeds 配置
-      - name: 加载自定义 feeds
+      # 步骤4：加载自定义feeds配置
+      # - 复制feeds配置文件（如果存在）
+      # - 执行diy-part1.sh脚本进行自定义feeds设置
+      - name: 加载自定义feeds
         run: |
-          # 如果存在 feeds 配置文件，则复制到源码目录
+          # 复制feeds配置
           [[ -f "${FEEDS_CONF}" ]] && cp -f ${FEEDS_CONF} openwrt/feeds.conf.default
           chmod +x ${DIY_P1_SH}
           cd openwrt/
           ${GITHUB_WORKSPACE}/${DIY_P1_SH}
 
-      # 步骤 5：更新软件包 feeds
-      - name: 更新 feeds
+      # 步骤5：更新软件包feeds
+      # - 运行feeds update命令更新所有feeds
+      - name: 更新feeds
         run: |
           cd openwrt/
           ./scripts/feeds update -a
 
-      # 步骤 6：安装软件包 feeds
-      - name: 安装 feeds
+      # 步骤6：安装软件包feeds
+      # - 运行feeds install命令安装所有feeds
+      - name: 安装feeds
         run: |
           cd openwrt/
           ./scripts/feeds install -a
 
-      # 步骤 7：加载自定义配置
+      # 步骤7：应用自定义配置
+      # - 移动files目录（如果存在）
+      # - 复制配置文件（如果存在）
+      # - 执行diy-part2.sh脚本进行自定义配置
       - name: 加载自定义配置
         run: |
-          # 复制配置文件和自定义脚本
+          # 移动files目录
           [[ -d "files" ]] && mv -f files openwrt/files
+          # 复制配置文件
           [[ -e "${CONFIG_FILE}" ]] && cp -f ${CONFIG_FILE} openwrt/.config
           chmod +x ${DIY_P2_SH}
           cd openwrt/
           ${GITHUB_WORKSPACE}/${DIY_P2_SH}
 
-      # 步骤 8：下载所需软件包
+      # 步骤8：下载所需软件包
+      # - 运行make defconfig生成默认配置
+      # - 下载编译所需软件包
+      # - 删除小于1KB的下载文件以节省空间
       - name: 下载软件包
         id: package
         run: |
           cd openwrt/
           make defconfig
           make download -j8
-          # 删除小型下载文件以清理空间
+          # 删除小文件
+          find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
-      # 步骤 9：编译固件
-      - name: 编译固件
+      # 步骤9：编译OpenWrt固件
+      # - 使用多线程编译固件
+      # - 如果失败，尝试单线程编译
+      - name: 编译OpenWrt
         id: compile
         run: |
           cd openwrt/
-          echo -e "使用 $(nproc) 个线程编译"
-          make -j$(($(nproc) + 1)) V=s || make -j1 V=s
+          echo "使用$(nproc)线程编译"
+          make -j$(($(nproc) + 1)) V=s || make -j1 || make -j1 V=s
           echo "status=success" >> ${GITHUB_OUTPUT}
 
-      # 步骤 10：准备输出文件
-      - name: 准备输出
+      # 步骤10：整理输出并清理
+      # - 创建输出目录，复制编译好的固件和配置文件
+      # - 清理非输出文件
+      # - 为输出文件生成校验和
+      - name: 整理输出并清理
         id: clean
         if: ${{ steps.compile.outputs.status == 'success' && !cancelled() }}
         run: |
           cd openwrt/
-          # 创建输出目录并复制固件文件
           mkdir output
+          # 复制固件到输出目录
           cp -f bin/targets/*/*/*rootfs.tar.gz output/
           cp -f .config output/config
           # 清理非输出文件
           rm -rf $(ls . | grep -v "^output$" | xargs) 2>/dev/null
 
-          # 生成 SHA256 校验文件
+          # 生成校验和文件
           cd output/
           for file in *; do [[ ! -d "${file}" ]] && sha256sum "${file}" >"${file}.sha"; done
 
           df -hT ${PWD}
           echo "status=success" >> ${GITHUB_OUTPUT}
 
-      # 步骤 11：上传固件到 GitHub Release
-      - name: 上传固件到 Release
+      # 步骤11：上传固件到GitHub Release
+      # - 将编译好的固件和校验和文件上传到GitHub Release
+      # - 包含固件信息和安装说明
+      - name: 上传OpenWrt到Release
         uses: ncipollo/release-action@v1
         if: ${{ steps.clean.outputs.status == 'success' && !cancelled() }}
         with:
@@ -201,13 +225,13 @@ jobs:
           replacesArtifacts: true
           token: ${{ secrets.GH_TOKEN }}
           body: |
-            ### 固件信息
-            - 默认 IP: 192.168.1.1
+            ### OpenWrt固件信息
+            - 默认IP: 192.168.1.1
             - 默认用户名: root
             - 默认密码: password
-            - 默认 WIFI 名称: OpenWrt
-            - 默认 WIFI 密码: 无
-            ### 安装到 EMMC
-            - 登录 OpenWrt → 系统 → 安装 OpenWrt
-            ### 固件验证
+            - 默认WIFI名称: OpenWrt
+            - 默认WIFI密码: 无
+            ### 安装到EMMC
+            - 登录OpenWrt → 系统 → Amlogic服务 → 安装OpenWrt
+            ### 固件校验
             - sha256sum
