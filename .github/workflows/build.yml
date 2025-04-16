@@ -1,17 +1,18 @@
 #============================================================================================
-# Description: 编译 Xiaomi Mi Router WR30U 和 CR6608 的 OpenWrt 和 ImmortalWrt 固件
+# https://github.com/ophub/amlogic-s9xxx-openwrt
+# Description: 电视盒子编译+IMG打包
 #============================================================================================
 
-name: 路由器固件编译
+name: 电视盒子编译+IMG打包
 
 on:
   repository_dispatch:
   workflow_dispatch:
     inputs:
       source_branch:
-        description: "选择固件类型"
+        description: "选择源码分支"
         required: false
-        default: "immortalwrt-master"
+        default: "openwrt-main"
         type: choice
         options:
           - openwrt-main
@@ -23,13 +24,13 @@ on:
         default: "all"
         type: choice
         options:
+          - all
           - xiaomi-wr30u-stock
           - xiaomi-wr30u-openwrt-uboot
           - xiaomi-wr30u-112m-ubi-nmbm
           - xiaomi-cr6608
-          - all
       openwrt_version:
-        description: "指定版本（例如 v23.05.3），留空使用最新版 (check https://github.com/openwrt/openwrt/releases or https://github.com/immortalwrt/immortalwrt/releases for latest)"
+        description: "输入OpenWrt版本号（为空使用最新版本）"
         required: false
         default: ""
         type: string
@@ -41,6 +42,7 @@ on:
         options:
           - save
           - temp
+          - all
       builder_name:
         description: "设置OpenWrt构建者签名"
         required: false
@@ -136,8 +138,15 @@ jobs:
               git clone -q --single-branch --depth=1 --branch=${REPO_BRANCH} ${REPO_URL} ${OUTPUT_DIR}
               ln -sf /workdir/${OUTPUT_DIR} ${GITHUB_WORKSPACE}/${OUTPUT_DIR}
 
-              # 中文注释：设置构建标签并输出信息
-              echo "build_tag_${branch}=OpenWrt_${TAGS_NAME}_${{ inputs.openwrt_storage }}_$(date +"%Y.%m")" >> ${GITHUB_OUTPUT}
+              # 中文注释：为每种存储类型设置构建标签
+              if [[ "${{ inputs.openwrt_storage }}" == "all" ]]; then
+                  STORAGES=("save" "temp")
+              else
+                  STORAGES=("${{ inputs.openwrt_storage }}")
+              fi
+              for storage in "${STORAGES[@]}"; do
+                  echo "build_tag_${branch}_${storage}=OpenWrt_${TAGS_NAME}_${storage}_$(date +"%Y.%m")" >> ${GITHUB_OUTPUT}
+              done
               echo -e "Branch: ${branch}\nREPO_URL: [ ${REPO_URL} ]\nREPO_BRANCH: [ ${REPO_BRANCH} ]\nTAGS_NAME: [ ${TAGS_NAME} ]"
               df -hT ${PWD}
           done
@@ -267,24 +276,34 @@ jobs:
         id: clean
         if: ${{ steps.compile.outputs.status }} == 'success' && !cancelled()
         run: |
-          # 中文注释：为每个分支创建输出目录并复制编译结果
+          # 中文注释：为每个分支和存储类型创建输出目录并复制编译结果
           if [[ "${{ inputs.source_branch }}" == "all" ]]; then
               BRANCHES=("openwrt-main" "immortalwrt-master")
           else
               BRANCHES=("${{ inputs.source_branch }}")
           fi
+          if [[ "${{ inputs.openwrt_storage }}" == "all" ]]; then
+              STORAGES=("save" "temp")
+          else
+              STORAGES=("${{ inputs.openwrt_storage }}")
+          fi
           for branch in "${BRANCHES[@]}"; do
-              OUTPUT_DIR="openwrt_${branch}"
-              cd ${OUTPUT_DIR}/
-              mkdir output
-              cp -f bin/targets/*/*/*rootfs.tar.gz output/ 2>/dev/null || true
-              cp -f .config output/config
+              for storage in "${STORAGES[@]}"; do
+                  OUTPUT_DIR="openwrt_${branch}_${storage}"
+                  SRC_DIR="openwrt_${branch}"
+                  mkdir -p ${OUTPUT_DIR}/output
+                  cp -f ${SRC_DIR}/bin/targets/*/*/*rootfs.tar.gz ${OUTPUT_DIR}/output/ 2>/dev/null || true
+                  cp -f ${SRC_DIR}/.config ${OUTPUT_DIR}/output/config
+                  
+                  # 中文注释：生成文件的sha256校验和
+                  cd ${OUTPUT_DIR}/output/
+                  for file in *; do [[ ! -d "${file}" ]] && sha256sum "${file}" >"${file}.sha"; done
+                  cd ../../../
+              done
+              # 中文注释：清理源编译目录（仅保留output）
+              cd openwrt_${branch}/
               rm -rf $(ls . | grep -v "^output$" | xargs) 2>/dev/null
-              
-              # 中文注释：生成文件的sha256校验和
-              cd output/
-              for file in *; do [[ ! -d "${file}" ]] && sha256sum "${file}" >"${file}.sha"; done
-              cd ../../
+              cd ../
           done
 
           # 中文注释：输出磁盘使用情况和状态
@@ -297,7 +316,7 @@ jobs:
         uses: ncipollo/release-action@v1
         if: ${{ steps.clean.outputs.status }} == 'success' && !cancelled()
         with:
-          tag: ${{ steps.codes.outputs.build_tag_${{ inputs.source_branch }} }}
+          tag: ${{ steps.codes.outputs.build_tag_${{ inputs.source_branch }}_${{ inputs.openwrt_storage }} }}
           artifacts: openwrt_*/output/*
           allowUpdates: true
           removeArtifacts: false
@@ -321,7 +340,7 @@ jobs:
         uses: ncipollo/release-action@v1
         if: ${{ env.PACKAGED_STATUS }} == 'success' && !cancelled()
         with:
-          tag: ${{ steps.codes.outputs.build_tag_${{ inputs.source_branch }} }}
+          tag: ${{ steps.codes.outputs.build_tag_${{ inputs.source_branch }}_${{ inputs.openwrt_storage }} }}
           artifacts: ${{ env.PACKAGED_OUTPUTPATH }}/*
           allowUpdates: true
           removeArtifacts: false
