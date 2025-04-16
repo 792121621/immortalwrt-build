@@ -1,4 +1,4 @@
-name: Build OpenWrt/ImmortalWrt Config
+name: Generate OpenWrt/ImmortalWrt Config
 
 on:
   workflow_dispatch:
@@ -6,132 +6,114 @@ on:
       source_branch:
         description: "选择源码分支"
         required: true
-        default: "openwrt-main"
+        default: "immortalwrt-master"
         type: choice
         options:
+          - all
           - openwrt-main
           - immortalwrt-master
       openwrt_board:
         description: "选择设备型号"
         required: true
-        default: "xiaomi_wr30u_stock"
+        default: "all"
         type: choice
         options:
+          - all
           - xiaomi_wr30u_stock
           - xiaomi_wr30u_ubootmod
           - xiaomi_wr30u_nmbm
           - xiaomi_cr6608
-          - all
       openwrt_version:
         description: "指定版本（例如 v23.05.3），留空使用最新版"
         required: false
         default: ""
 
 jobs:
-  build-config:
+  generate-config:
     runs-on: ubuntu-24.04
     steps:
-      # 检出代码仓库
+      # 检出当前仓库代码
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 安装依赖
+      # 安装编译所需依赖
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential clang flex bison g++ gawk \
-            gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
-            python3 python3-pip unzip zlib1g-dev file rsync subversion swig \
-            libelf-dev
-          sudo pip3 install -U pip
-          sudo pip3 install pyyaml
+          sudo apt update
+          sudo apt install -y build-essential clang flex bison g++ gawk \
+          gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
+          python3-setuptools rsync swig unzip zlib1g-dev file wget
 
-      # 设置源码仓库和分支
-      - name: Setup source repository
+      # 设置源码仓库并克隆
+      # 1. 创建 config 目录
+      # 2. 定义 OpenWrt 和 ImmortalWrt 的仓库地址及分支
+      # 3. 根据输入克隆对应仓库
+      - name: Setup repositories
         run: |
-          if [ "${{ github.event.inputs.source_branch }}" == "openwrt-main" ]; then
-            git clone https://github.com/openwrt/openwrt.git source
-            cd source
-            git checkout main
+          mkdir -p config
+          # 定义仓库
+          declare -A repos
+          repos["openwrt-main"]="https://github.com/openwrt/openwrt.git main"
+          repos["immortalwrt-master"]="https://github.com/immortalwrt/immortalwrt.git master"
+
+          # 克隆选定的仓库
+          if [[ "${{ github.event.inputs.source_branch }}" == "all" ]]; then
+            branches=("openwrt-main" "immortalwrt-master")
           else
-            git clone https://github.com/immortalwrt/immortalwrt.git source
-            cd source
-            git checkout master
-          fi
-          # 如果指定了版本，切换到对应版本
-          if [ -n "${{ github.event.inputs.openwrt_version }}" ]; then
-            git checkout ${{ github.event.inputs.openwrt_version }}
+            branches=("${{ github.event.inputs.source_branch }}")
           fi
 
-      # 更新和安装 feeds
-      - name: Update and install feeds
-        run: |
-          cd source
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
+          for branch in "${branches[@]}"; do
+            repo_url=$(echo ${repos[$branch]} | cut -d' ' -f1)
+            repo_branch=$(echo ${repos[$branch]} | cut -d' ' -f2)
+            git clone --depth 1 -b $repo_branch $repo_url ${branch}
+          done
 
-      # 生成默认配置
-      - name: Generate default config
+      # 生成配置文件
+      # 1. 根据输入确定设备型号列表
+      # 2. 根据输入确定源码分支列表
+      # 3. 遍历分支和设备型号，更新 feeds、生成配置并保存
+      - name: Generate config
         run: |
-          cd source
-          # 定义所有设备型号
-          BOARDS="xiaomi_wr30u_stock xiaomi_wr30u_ubootmod xiaomi_wr30u_nmbm xiaomi_cr6608"
-          
-          # 如果选择 all，循环生成所有设备的配置
-          if [ "${{ github.event.inputs.openwrt_board }}" == "all" ]; then
-            for BOARD in $BOARDS; do
-              echo "Generating config for $BOARD"
-              case "$BOARD" in
-                "xiaomi_wr30u_stock")
-                  make defconfig BOARD=mediatek/filogic
-                  ;;
-                "xiaomi_wr30u_ubootmod")
-                  make defconfig BOARD=mediatek/filogic
-                  ;;
-                "xiaomi_wr30u_nmbm")
-                  make defconfig BOARD=mediatek/filogic
-                  ;;
-                "xiaomi_cr6608")
-                  make defconfig BOARD=mediatek/mt7622
-                  ;;
-              esac
+          boards=()
+          if [[ "${{ github.event.inputs.openwrt_board }}" == "all" ]]; then
+            boards=("xiaomi_wr30u_stock" "xiaomi_wr30u_ubootmod" "xiaomi_wr30u_nmbm" "xiaomi_cr6608")
+          else
+            boards=("${{ github.event.inputs.openwrt_board }}")
+          fi
+
+          branches=()
+          if [[ "${{ github.event.inputs.source_branch }}" == "all" ]]; then
+            branches=("openwrt-main" "immortalwrt-master")
+          else
+            branches=("${{ github.event.inputs.source_branch }}")
+          fi
+
+          for branch in "${branches[@]}"; do
+            for board in "${boards[@]}"; do
+              cd ${branch}
+              # 更新并安装 feeds
+              ./scripts/feeds update -a
+              ./scripts/feeds install -a
+
+              # 如果指定了版本号，则切换到对应版本
+              if [[ -n "${{ github.event.inputs.openwrt_version }}" ]]; then
+                git checkout v${{ github.event.inputs.openwrt_version }}
+              fi
+
+              # 生成默认配置
+              make defconfig
+
               # 保存配置
-              mkdir -p ../config/${{ github.event.inputs.source_branch }}/$BOARD
-              cp .config ../config/${{ github.event.inputs.source_branch }}/$BOARD/config
+              mkdir -p ../config/${branch}/${board}
+              cp .config ../config/${branch}/${board}/config
+              cd ..
             done
-          else
-            # 单一设备型号生成配置
-            case "${{ github.event.inputs.openwrt_board }}" in
-              "xiaomi_wr30u_stock")
-                make defconfig BOARD=mediatek/filogic
-                ;;
-              "xiaomi_wr30u_ubootmod")
-                make defconfig BOARD=mediatek/filogic
-                ;;
-              "xiaomi_wr30u_nmbm")
-                make defconfig BOARD=mediatek/filogic
-                ;;
-              "xiaomi_cr6608")
-                make defconfig BOARD=mediatek/mt7622
-                ;;
-            esac
-            # 保存配置
-            mkdir -p ../config/${{ github.event.inputs.source_branch }}/${{ github.event.inputs.openwrt_board }}
-            cp .config ../config/${{ github.event.inputs.source_branch }}/${{ github.event.inputs.openwrt_board }}/config
-          fi
+          done
 
-      # 保存配置到仓库
-      - name: Save config to repository
-        run: |
-          git config --global user.name "GitHub Action"
-          git config --global user.email "action@github.com"
-          git add config/
-          git commit -m "Add config for ${{ github.event.inputs.source_branch }}/${{ github.event.inputs.openwrt_board }}"
-          git push origin main
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 清理工作目录
-      - name: Cleanup
-        run: |
-          rm -rf source
+      # 上传生成的配置文件
+      - name: Upload configs
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwrt-configs
+          path: config/
