@@ -23,7 +23,6 @@ on:
           - xiaomi_wr30u_ubootmod
           - xiaomi_wr30u_nmbm
           - xiaomi_cr6608
-          - 11111111
           - all
       version:
         description: '指定版本（为空则使用最新版本）'
@@ -75,11 +74,15 @@ jobs:
           if [ "${{ github.event.inputs.device_model }}" = "all" ]; then
             for model in xiaomi_wr30u_stock xiaomi_wr30u_ubootmod xiaomi_wr30u_nmbm xiaomi_cr6608; do
               make defconfig
+              # 确保目标目录存在
+              mkdir -p ../${CONFIG_DIR}/openwrt-main/$model
               # 模拟生成 config 文件（需替换为实际的 config 生成命令）
               echo "Generated config for $model" > ../${CONFIG_DIR}/openwrt-main/$model/config
             done
           else
             make defconfig
+            # 确保目标目录存在
+            mkdir -p ../${CONFIG_DIR}/openwrt-main/${{ github.event.inputs.device_model }}
             # 模拟生成 config 文件（需替换为实际的 config 生成命令）
             echo "Generated config for ${{ github.event.inputs.device_model }}" > ../${CONFIG_DIR}/openwrt-main/${{ github.event.inputs.device_model }}/config
           fi
@@ -102,11 +105,15 @@ jobs:
           if [ "${{ github.event.inputs.device_model }}" = "all" ]; then
             for model in xiaomi_wr30u_stock xiaomi_wr30u_ubootmod xiaomi_wr30u_nmbm xiaomi_cr6608; do
               make defconfig
+              # 确保目标目录存在
+              mkdir -p ../${CONFIG_DIR}/immortalwrt-master/$model
               # 模拟生成 config 文件（需替换为实际的 config 生成命令）
               echo "Generated config for $model" > ../${CONFIG_DIR}/immortalwrt-master/$model/config
             done
           else
             make defconfig
+            # 确保目标目录存在
+            mkdir -p ../${CONFIG_DIR}/immortalwrt-master/${{ github.event.inputs.device_model }}
             # 模拟生成 config 文件（需替换为实际的 config 生成命令）
             echo "Generated config for ${{ github.event.inputs.device_model }}" > ../${CONFIG_DIR}/immortalwrt-master/${{ github.event.inputs.device_model }}/config
           fi
