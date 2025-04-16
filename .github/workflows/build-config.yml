@@ -21,6 +21,7 @@ on:
           - xiaomi_wr30u_ubootmod
           - xiaomi_wr30u_nmbm
           - xiaomi_cr6608
+          - all
       openwrt_version:
         description: "指定版本（例如 v23.05.3），留空使用最新版"
         required: false
@@ -73,31 +74,58 @@ jobs:
       - name: Generate default config
         run: |
           cd source
-          # 根据设备型号选择目标
-          case "${{ github.event.inputs.openwrt_board }}" in
-            "xiaomi_wr30u_stock")
-              make defconfig BOARD=mediatek/filogic
-              ;;
-            "xiaomi_wr30u_ubootmod")
-              make defconfig BOARD=mediatek/filogic
-              ;;
-            "xiaomi_wr30u_nmbm")
-              make defconfig BOARD=mediatek/filogic
-              ;;
-            "xiaomi_cr6608")
-              make defconfig BOARD=mediatek/mt7622
-              ;;
-          esac
-          # 保存配置
-          mkdir -p ../config/${{ github.event.inputs.source_branch }}/${{ github.event.inputs.openwrt_board }}
-          cp .config ../config/${{ github.event.inputs.source_branch }}/${{ github.event.inputs.openwrt_board }}/config
+          # 定义所有设备型号
+          BOARDS="xiaomi_wr30u_stock xiaomi_wr30u_ubootmod xiaomi_wr30u_nmbm xiaomi_cr6608"
+          
+          # 如果选择 all，循环生成所有设备的配置
+          if [ "${{ github.event.inputs.openwrt_board }}" == "all" ]; then
+            for BOARD in $BOARDS; do
+              echo "Generating config for $BOARD"
+              case "$BOARD" in
+                "xiaomi_wr30u_stock")
+                  make defconfig BOARD=mediatek/filogic
+                  ;;
+                "xiaomi_wr30u_ubootmod")
+                  make defconfig BOARD=mediatek/filogic
+                  ;;
+                "xiaomi_wr30u_nmbm")
+                  make defconfig BOARD=mediatek/filogic
+                  ;;
+                "xiaomi_cr6608")
+                  make defconfig BOARD=mediatek/mt7622
+                  ;;
+              esac
+              # 保存配置
+              mkdir -p ../config/${{ github.event.inputs.source_branch }}/$BOARD
+              cp .config ../config/${{ github.event.inputs.source_branch }}/$BOARD/config
+            done
+          else
+            # 单一设备型号生成配置
+            case "${{ github.event.inputs.openwrt_board }}" in
+              "xiaomi_wr30u_stock")
+                make defconfig BOARD=mediatek/filogic
+                ;;
+              "xiaomi_wr30u_ubootmod")
+                make defconfig BOARD=mediatek/filogic
+                ;;
+              "xiaomi_wr30u_nmbm")
+                make defconfig BOARD=mediatek/filogic
+                ;;
+              "xiaomi_cr6608")
+                make defconfig BOARD=mediatek/mt7622
+                ;;
+            esac
+            # 保存配置
+            mkdir -p ../config/${{ github.event.inputs.source_branch }}/${{ github.event.inputs.openwrt_board }}
+            cp .config ../config/${{ github.event.inputs.source_branch }}/${{ github.event.inputs.openwrt_board }}/config
+          fi
 
       # 保存配置到仓库
       - name: Save config to repository
         run: |
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
-          git add config/${{ github.event.inputs.source_branch }}/${{ github.event.inputs.openwrt_board }}/config
+          git add config/
           git commit -m "Add config for ${{ github.event.inputs.source_branch }}/${{ github.event.inputs.openwrt_board }}"
           git push origin main
         env:
