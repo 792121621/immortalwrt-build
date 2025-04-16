@@ -1,42 +1,40 @@
-name: Generate OpenWrt/ImmortalWrt Config
+name: Build OpenWrt and ImmortalWrt Config
 
 on:
   workflow_dispatch:
     inputs:
-      source_branch:
-        description: "选择源码分支"
+      firmware:
+        description: '选择固件类型'
         required: true
-        default: "immortalwrt-master"
         type: choice
         options:
-          - all
           - openwrt-main
           - immortalwrt-master
-      openwrt_board:
-        description: "选择设备型号"
+          - all
+      device:
+        description: '选择设备型号'
         required: true
-        default: "all"
         type: choice
         options:
+          - Xiaomi Mi Router WR30U (stock layout)
+          - Xiaomi Mi Router WR30U (OpenWrt U-Boot layout)
+          - Xiaomi Mi Router WR30U (112M UBI with NMBM-Enabled layout)
+          - Xiaomi Mi Router CR6608
           - all
-          - xiaomi_wr30u_stock
-          - xiaomi_wr30u_ubootmod
-          - xiaomi_wr30u_nmbm
-          - xiaomi_cr6608
-      openwrt_version:
-        description: "指定版本（例如 v23.05.3），留空使用最新版"
+      version:
+        description: '指定版本（为空则使用最新版本）'
         required: false
-        default: ""
+        type: string
 
 jobs:
-  generate-config:
+  build-config:
     runs-on: ubuntu-24.04
     steps:
-      # 检出当前仓库代码
+      # 步骤1：检出代码仓库
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 安装编译所需依赖
+      # 步骤2：安装依赖
       - name: Install dependencies
         run: |
           sudo apt update
@@ -44,76 +42,74 @@ jobs:
           gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
           python3-setuptools rsync swig unzip zlib1g-dev file wget
 
-      # 设置源码仓库并克隆
-      # 1. 创建 config 目录
-      # 2. 定义 OpenWrt 和 ImmortalWrt 的仓库地址及分支
-      # 3. 根据输入克隆对应仓库
-      - name: Setup repositories
+      # 步骤3：设置工作目录并克隆固件源码
+      - name: Clone firmware repositories
         run: |
           mkdir -p config
-          # 定义仓库
-          declare -A repos
-          repos["openwrt-main"]="https://github.com/openwrt/openwrt.git main"
-          repos["immortalwrt-master"]="https://github.com/immortalwrt/immortalwrt.git master"
-
-          # 克隆选定的仓库
-          if [[ "${{ github.event.inputs.source_branch }}" == "all" ]]; then
-            branches=("openwrt-main" "immortalwrt-master")
-          else
-            branches=("${{ github.event.inputs.source_branch }}")
-          fi
-
-          for branch in "${branches[@]}"; do
-            repo_url=$(echo ${repos[$branch]} | cut -d' ' -f1)
-            repo_branch=$(echo ${repos[$branch]} | cut -d' ' -f2)
-            git clone --depth 1 -b $repo_branch $repo_url ${branch}
-          done
-
-      # 生成配置文件
-      # 1. 根据输入确定设备型号列表
-      # 2. 根据输入确定源码分支列表
-      # 3. 遍历分支和设备型号，更新 feeds、生成配置并保存
-      - name: Generate config
-        run: |
-          boards=()
-          if [[ "${{ github.event.inputs.openwrt_board }}" == "all" ]]; then
-            boards=("xiaomi_wr30u_stock" "xiaomi_wr30u_ubootmod" "xiaomi_wr30u_nmbm" "xiaomi_cr6608")
-          else
-            boards=("${{ github.event.inputs.openwrt_board }}")
-          fi
-
-          branches=()
-          if [[ "${{ github.event.inputs.source_branch }}" == "all" ]]; then
-            branches=("openwrt-main" "immortalwrt-master")
-          else
-            branches=("${{ github.event.inputs.source_branch }}")
-          fi
-
-          for branch in "${branches[@]}"; do
-            for board in "${boards[@]}"; do
-              cd ${branch}
-              # 更新并安装 feeds
-              ./scripts/feeds update -a
-              ./scripts/feeds install -a
-
-              # 如果指定了版本号，则切换到对应版本
-              if [[ -n "${{ github.event.inputs.openwrt_version }}" ]]; then
-                git checkout v${{ github.event.inputs.openwrt_version }}
-              fi
-
-              # 生成默认配置
-              make defconfig
-
-              # 保存配置
-              mkdir -p ../config/${branch}/${board}
-              cp .config ../config/${branch}/${board}/config
+          # 根据输入选择克隆 openwrt-main、immortalwrt-master 或两者
+          if [[ "${{ github.event.inputs.firmware }}" == "openwrt-main" || "${{ github.event.inputs.firmware }}" == "all" ]]; then
+            git clone https://git.openwrt.org/openwrt/openwrt.git openwrt-main
+            # 如果指定了版本，切换到指定版本
+            if [ -n "${{ github.event.inputs.version }}" ]; then
+              cd openwrt-main
+              git checkout ${{ github.event.inputs.version }}
               cd ..
-            done
+            fi
+          fi
+          if [[ "${{ github.event.inputs.firmware }}" == "immortalwrt-master" || "${{ github.event.inputs.firmware }}" == "all" ]]; then
+            git clone https://github.com/immortalwrt/immortalwrt.git immortalwrt-master
+            if [ -n "${{ github.event.inputs.version }}" ]; then
+              cd immortalwrt-master
+              git checkout ${{ github.event.inputs.version }}
+              cd ..
+            fi
+          fi
+
+      # 步骤4：生成设备配置文件
+      - name: Generate config for selected devices
+        run: |
+          # 定义设备配置文件路径
+          declare -A devices
+          devices["Xiaomi Mi Router WR30U (stock layout)"]="xiaomi_wr30u_stock"
+          devices["Xiaomi Mi Router WR30U (OpenWrt U-Boot layout)"]="xiaomi_wr30u_ubootmod"
+          devices["Xiaomi Mi Router WR30U (112M UBI with NMBM-Enabled layout)"]="xiaomi_wr30u_nmbm"
+          devices["Xiaomi Mi Router CR6608"]="xiaomi_cr6608"
+
+          # 遍历固件类型
+          for firmware in openwrt-main immortalwrt-master; do
+            if [[ "${{ github.event.inputs.firmware }}" != "all" && "${{ github.event.inputs.firmware }}" != "$firmware" ]]; then
+              continue
+            fi
+            if [ ! -d "$firmware" ]; then
+              continue
+            fi
+            cd $firmware
+            # 更新 feeds
+            ./scripts/feeds update -a
+            ./scripts/feeds install -a
+
+            # 根据设备选择生成配置文件
+            if [[ "${{ github.event.inputs.device }}" == "all" ]]; then
+              for device in "${!devices[@]}"; do
+                target=${devices[$device]}
+                make defconfig
+                # 生成配置文件并保存到指定路径
+                mkdir -p ../config/$firmware/$target
+                cp .config ../config/$firmware/$target/config
+              done
+            else
+              target=${devices["${{ github.event.inputs.device }}"]}
+              make defconfig
+              # 生成配置文件并保存到指定路径
+              mkdir -p ../config/$firmware/$target
+              cp .config ../config/$firmware/$target/config
+            fi
+            cd ..
           done
 
-      # 上传生成的配置文件
-      - name: Upload configs
+      # 步骤5：上传生成的配置文件
+      - name: Upload config artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: openwrt-configs
+          name: firmware-configs
           path: config/
