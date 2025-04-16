@@ -172,8 +172,7 @@ jobs:
           # Clean up server space
           cd openwrt/
           mkdir output
-          cp -f bin/targets/*/*/*.bin output/
-          cp -f bin/targets/*/*/*.ubi output/
+          find bin/targets/*/* -type f \( -name "*.bin" -o -name "*.ubi" \) -exec cp -f {} output/ \;
           cp -f .config output/config
           rm -rf $(ls . | grep -v "^output$" | xargs) 2>/dev/null
 
