@@ -1,16 +1,15 @@
 #============================================================================================
-# https://github.com/ophub/amlogic-s9xxx-openwrt
-# Description: 电视盒子编译+IMG打包
+# Description: 编译 Xiaomi Mi Router WR30U 和 CR6608 的 OpenWrt 和 ImmortalWrt 固件
 #============================================================================================
 
-name: 电视盒子编译+IMG打包
+name: 路由器固件编译
 
 on:
   repository_dispatch:
   workflow_dispatch:
     inputs:
       source_branch:
-        description: "选择源码分支"
+        description: "选择固件类型"
         required: false
         default: "immortalwrt-master"
         type: choice
@@ -30,7 +29,7 @@ on:
           - xiaomi-cr6608
           - all
       openwrt_version:
-        description: "输入OpenWrt版本号（为空使用最新版本）"
+        description: "指定版本（例如 v23.05.3），留空使用最新版 (check https://github.com/openwrt/openwrt/releases or https://github.com/immortalwrt/immortalwrt/releases for latest)"
         required: false
         default: ""
         type: string
