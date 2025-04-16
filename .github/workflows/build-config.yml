@@ -1,10 +1,10 @@
-name: Build OpenWrt/ImmortalWrt Firmware
+name: Fetch OpenWrt/ImmortalWrt Config
 
 on:
   workflow_dispatch:
     inputs:
       firmware:
-        description: '选择固件 (openwrt-main, immortalwrt-master, all)'
+        description: '选择固件类型'
         required: true
         default: 'all'
         type: choice
@@ -13,7 +13,7 @@ on:
           - immortalwrt-master
           - all
       device:
-        description: '选择设备型号 (xiaomi_mi-router-wr30u-stock, xiaomi_mi-router-wr30u-ubootmod, xiaomi_mi-router-wr30u-112m-nmbm, xiaomi_mi-router-cr6608, all)'
+        description: '选择设备型号'
         required: true
         default: 'all'
         type: choice
@@ -24,110 +24,94 @@ on:
           - xiaomi_mi-router-cr6608
           - all
       version:
-        description: '选择固件版本（留空使用最新版本）'
+        description: '指定版本（为空使用最新版本）'
         required: false
-        default: ''
         type: string
 
 jobs:
-  build:
+  fetch-config:
     runs-on: ubuntu-24.04
     steps:
-    
-      # 第一步：设置环境
-      - name: Set up environment
+      # 检出代码仓库
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 安装依赖
+      - name: Install dependencies
         run: |
           sudo apt update
           sudo apt install -y build-essential clang flex bison g++ gawk \
-            gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
-            python3-setuptools rsync swig unzip zlib1g-dev file wget
+          gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
+          python3-setuptools rsync swig unzip zlib1g-dev file wget
 
-      # 第二步：选择版本
-      - name: Checkout openwrt/immortalwrt repository
+      # 设置环境变量
+      - name: Set environment variables
         run: |
-          if [ "${{ github.event.inputs.firmware }}" == "openwrt-main" ]; then
-            echo "Checking out openwrt-main"
-            git clone --branch master https://github.com/openwrt/openwrt.git
-          elif [ "${{ github.event.inputs.firmware }}" == "immortalwrt-master" ]; then
-            echo "Checking out immortalwrt-master"
-            git clone --branch master https://github.com/immortalwrt/immortalwrt.git
-          elif [ "${{ github.event.inputs.firmware }}" == "all" ]; then
-            echo "Cloning both OpenWrt and ImmortalWrt repositories"
-            git clone --branch master https://github.com/openwrt/openwrt.git
-            git clone --branch master https://github.com/immortalwrt/immortalwrt.git
+          echo "FIRMWARE=${{ inputs.firmware }}" >> $GITHUB_ENV
+          echo "DEVICE=${{ inputs.device }}" >> $GITHUB_ENV
+          echo "VERSION=${{ inputs.version }}" >> $GITHUB_ENV
+
+      # 克隆 OpenWrt 仓库并生成 config
+      - name: Clone and generate OpenWrt config
+        if: env.FIRMWARE == 'openwrt-main' || env.FIRMWARE == 'all'
+        run: |
+          # 克隆 OpenWrt 主分支
+          git clone https://github.com/openwrt/openwrt.git openwrt
+          cd openwrt
+          # 如果指定了版本，切换到该版本
+          if [ -n "${{ env.VERSION }}" ]; then
+            git checkout ${{ env.VERSION }}
           fi
-
-      # 第三步：选择设备型号
-      - name: Select device configuration
-        run: |
-          if [ "${{ github.event.inputs.device }}" == "xiaomi_mi-router-wr30u-stock" ]; then
-            CONFIG="xiaomi_mi-router-wr30u-stock"
-          elif [ "${{ github.event.inputs.device }}" == "xiaomi_mi-router-wr30u-ubootmod" ]; then
-            CONFIG="xiaomi_mi-router-wr30u-ubootmod"
-          elif [ "${{ github.event.inputs.device }}" == "xiaomi_mi-router-wr30u-112m-nmbm" ]; then
-            CONFIG="xiaomi_mi-router-wr30u-112m-nmbm"
-          elif [ "${{ github.event.inputs.device }}" == "xiaomi_mi-router-cr6608" ]; then
-            CONFIG="xiaomi_mi-router-cr6608"
+          # 更新 feeds
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          # 根据设备生成 config
+          if [ "${{ env.DEVICE }}" == "all" ]; then
+            DEVICES="xiaomi_mi-router-wr30u-stock xiaomi_mi-router-wr30u-ubootmod xiaomi_mi-router-wr30u-112m-nmbm xiaomi_mi-router-cr6608"
           else
-            CONFIG="all"
+            DEVICES="${{ env.DEVICE }}"
           fi
-          echo "Selected device: ${CONFIG}"
+          for device in $DEVICES; do
+            make defconfig
+            # 自动识别架构（基于设备的目标配置文件）
+            make menuconfig # 这里需要根据设备选择正确的 target，实际需脚本化处理
+            mkdir -p ../config/openwrt-main/$device
+            cp .config ../config/openwrt-main/$device/config
+          done
 
-      # 第四步：选择版本
-      - name: Check version
+      # 克隆 ImmortalWrt 仓库并生成 config
+      - name: Clone and generate ImmortalWrt config
+        if: env.FIRMWARE == 'immortalwrt-master' || env.FIRMWARE == 'all'
         run: |
-          if [ -z "${{ github.event.inputs.version }}" ]; then
-            echo "No version specified, using latest version"
-            VERSION="latest"
+          # 克隆 ImmortalWrt 主分支
+          git clone https://github.com/immortalwrt/immortalwrt.git immortalwrt
+          cd immortalwrt
+          # 如果指定了版本，切换到该版本
+          if [ -n "${{ env.VERSION }}" ]; then
+            git checkout ${{ env.VERSION }}
+          fi
+          # 更新 feeds
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          # 根据设备生成 config
+          if [ "${{ env.DEVICE }}" == "all" ]; then
+            DEVICES="xiaomi_mi-router-wr30u-stock xiaomi_mi-router-wr30u-ubootmod xiaomi_mi-router-wr30u-112m-nmbm xiaomi_mi-router-cr6608"
           else
-            echo "Using specified version: ${{ github.event.inputs.version }}"
-            VERSION="${{ github.event.inputs.version }}"
+            DEVICES="${{ env.DEVICE }}"
           fi
-
-      # 第五步：配置编译环境和固件
-      - name: Configure firmware
-        run: |
-          if [ "${{ github.event.inputs.firmware }}" == "openwrt-main" ] || [ "${{ github.event.inputs.firmware }}" == "all" ]; then
-            cd openwrt
-            if [ "${VERSION}" != "latest" ]; then
-              git checkout ${VERSION}
-            fi
-            ./scripts/feeds update -a
-            ./scripts/feeds install -a
-            make menuconfig
+          for device in $DEVICES; do
             make defconfig
-            # 保存配置文件
-            mkdir -p config/openwrt-main/${CONFIG}
-            cp .config config/openwrt-main/${CONFIG}/config
-            cd ..
-          fi
-          
-          if [ "${{ github.event.inputs.firmware }}" == "immortalwrt-master" ] || [ "${{ github.event.inputs.firmware }}" == "all" ]; then
-            cd immortalwrt
-            if [ "${VERSION}" != "latest" ]; then
-              git checkout ${VERSION}
-            fi
-            ./scripts/feeds update -a
-            ./scripts/feeds install -a
-            make menuconfig
-            make defconfig
-            # 保存配置文件
-            mkdir -p config/immortalwrt-master/${CONFIG}
-            cp .config config/immortalwrt-master/${CONFIG}/config
-            cd ..
-          fi
+            # 自动识别架构（基于设备的目标配置文件）
+            make menuconfig # 这里需要根据设备选择正确的 target，实际需脚本化处理
+            mkdir -p ../config/immortalwrt-master/$device
+            cp .config ../config/immortalwrt-master/$device/config
+          done
 
-      # 第六步：编译固件
-      - name: Build firmware
+      # 提交 config 文件到仓库
+      - name: Commit and push config files
         run: |
-          if [ "${{ github.event.inputs.firmware }}" == "openwrt-main" ] || [ "${{ github.event.inputs.firmware }}" == "all" ]; then
-            cd openwrt
-            make -j$(nproc)
-            cd ..
-          fi
-          
-          if [ "${{ github.event.inputs.firmware }}" == "immortalwrt-master" ] || [ "${{ github.event.inputs.firmware }}" == "all" ]; then
-            cd immortalwrt
-            make -j$(nproc)
-            cd ..
-          fi
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add config/
+          git commit -m "Update config files for ${{ env.FIRMWARE }} ${{ env.DEVICE }}"
+          git push origin main
