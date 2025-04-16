@@ -1,0 +1,104 @@
+#============================================================================================
+# Description: 编译 Xiaomi Mi Router WR30U 和 CR6608 的 OpenWrt 和 ImmortalWrt 固件
+# Purpose: 自动化编译指定路由器型号的固件，支持 OpenWrt 和 ImmortalWrt，支持用户自定义分支、版本和配置
+#============================================================================================
+
+name: 路由器固件编译
+
+# 触发条件：支持手动触发（workflow_dispatch）或通过 repository_dispatch 事件触发
+on:
+  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      source_branch:
+        description: "选择源码分支"
+        required: false
+        default: "immortalwrt-master"
+        type: choice
+        options:
+          - openwrt-main
+          - immortalwrt-master
+      openwrt_board:
+        description: "选择路由器型号"
+        required: true
+        type: choice
+        options:
+          - xiaomi_wr30u_stock
+          - xiaomi_wr30u_ubootmod
+          - xiaomi_wr30u_nmbm
+          - xiaomi_cr6608
+      openwrt_version:
+        description: "选择 OpenWrt/ImmortalWrt 版本（留空为最新）"
+        required: false
+        default: ""
+        type: string
+      auto_kernel:
+        description: "自动使用最新内核"
+        required: false
+        default: true
+        type: boolean
+      builder_name:
+        description: "设置固件编译者签名"
+        required: false
+        default: "angel"
+        type: choice
+        options:
+          - angel
+          - yourname
+
+# 环境变量：定义配置文件路径和时区
+env:
+  FEEDS_CONF: config/${{ inputs.source_branch }}/feeds.conf.default  # 自定义 feeds 配置文件路径
+  CONFIG_FILE: config/${{ inputs.source_branch }}/${{ inputs.openwrt_board }}.config  # 路由器型号配置文件路径
+  DIY_P1_SH: config/${{ inputs.source_branch }}/diy-part1.sh  # 自定义脚本1（用于 feeds 配置）
+  DIY_P2_SH: config/${{ inputs.source_branch }}/diy-part2.sh  # 自定义脚本2（用于编译配置）
+  TZ: America/New_York  # 设置时区为美国纽约时间
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04t  # 使用最新 Ubuntu 环境（替换 ubuntu-22.04）
+    # 权限检查：确保触发者是仓库拥有者
+    if: ${{ github.event.repository.owner.id }} == ${{ github.event.sender.id }}
+
+    steps:
+      # 步骤1：检出仓库代码
+      - name: Checkout
+        uses: actions/checkout@v3
+        # 说明：使用 actions/checkout@v3 将当前仓库代码检出到工作目录（$GITHUB_WORKSPACE）
+
+      # 步骤2：初始化编译环境
+      - name: Initialization environment
+        id: init
+        env:
+          DEBIAN_FRONTEND: noninteractive  # 设置非交互式安装，避免 apt-get 提示
+        run: |
+          # 清理 Docker 镜像，释放磁盘空间
+          if [ -n "$(docker images -q)" ]; then
+            docker rmi $(docker images -q)
+          else
+            echo "No Docker images to remove."
+          fi
+          # 删除不需要的工具目录（如果存在）
+          [[ -n "${AGENT_TOOLSDIRECTORY}" ]] && sudo rm -rf "${AGENT_TOOLSDIRECTORY}"
+          # 删除可能占用空间的软件目录
+          sudo rm -rf /usr/share/dotnet /etc/apt/sources.list.d /usr/local/lib/android 2>/dev/null
+          # 更新软件包索引
+          sudo -E apt-get -y update
+          # 卸载不需要的软件包（如 Azure CLI、GHC、Firefox 等）
+          sudo -E apt-get -y purge azure-cli ghc* zulu* llvm* firefox google* dotnet* powershell openjdk* mongodb* moby* || true
+          # 安装 OpenWrt 编译所需依赖（通过外部脚本获取依赖列表）
+          sudo -E apt-get -y install $(curl -fsSL https://is.gd/depend_ubuntu2204_openwrt)
+          # 重新加载 systemd 配置
+          sudo -E systemctl daemon-reload
+          # 清理无用软件包和缓存
+          sudo -E apt-get -y autoremove --purge
+          sudo -E apt-get clean
+          # 创建工作目录并设置权限
+          sudo mkdir -p /workdir
+          sudo chown ${USER}:${GROUPS} /workdir
+          # 设置系统时区
+          sudo timedatectl set-timezone "${TZ}"
+          # 输出步骤状态
+          echo "status=success" >> ${GITHUB_OUTPUT}
+
+      # 步骤3：克隆源码
