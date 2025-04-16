@@ -23,6 +23,7 @@ on:
           - xiaomi_wr30u_ubootmod
           - xiaomi_wr30u_nmbm
           - xiaomi_cr6608
+          - 1234
           - all
       version:
         description: '指定版本（为空则使用最新版本）'
