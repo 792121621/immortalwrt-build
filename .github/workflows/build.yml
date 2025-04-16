@@ -60,13 +60,20 @@ jobs:
           docker rmi `docker images -q` 2>/dev/null || true
           # 删除不必要的工具和目录
           sudo rm -rf /usr/share/dotnet /etc/apt/sources.list.d /usr/local/lib/android 2>/dev/null
+          # 配置 Ubuntu 24.04 的软件源
+          sudo bash -c 'echo "deb http://archive.ubuntu.com/ubuntu noble main restricted universe multiverse" > /etc/apt/sources.list'
+          sudo bash -c 'echo "deb http://archive.ubuntu.com/ubuntu noble-updates main restricted universe multiverse" >> /etc/apt/sources.list'
+          sudo bash -c 'echo "deb http://archive.ubuntu.com/ubuntu noble-security main restricted universe multiverse" >> /etc/apt/sources.list'
           # 更新软件包列表
-          sudo apt-get -y update
+          sudo apt-get -y update || { echo "Failed to update package lists"; exit 1; }
           # 安装 OpenWrt/ImmortalWrt 编译所需的依赖，适配 Ubuntu 24.04
-          sudo apt-get -y install build-essential clang flex bison g++ gawk gcc-multilib \
-            gettext git libncurses5-dev libssl-dev python3-distutils python3-pyelftools \
-            rsync unzip zlib1g-dev file wget curl subversion swig cpio bc \
-            libelf-dev libffi-dev libzstd-dev
+          sudo apt-get -y install \
+            build-essential clang flex bison g++ gawk \
+            gettext git libncurses5-dev libssl-dev \
+            python3 python3-lib2to3 python3-pyelftools \
+            rsync unzip zlib1g-dev file wget curl \
+            subversion swig cpio bc libelf-dev libffi-dev libzstd-dev \
+            || { echo "Failed to install dependencies"; exit 1; }
           # 清理软件包缓存以减少磁盘使用
           sudo apt-get -y autoremove --purge
           sudo apt-get clean
