@@ -59,9 +59,9 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         run: |
           # 清理Docker镜像和不必要的工具
-          # docker rmi `docker images -q` 2>/dev/null || true
-          # [[ -n "${AGENT_TOOLSDIRECTORY}" ]] && sudo rm -rf "${AGENT_TOOLSDIRECTORY}"
-          # sudo rm -rf /usr/share/dotnet /etc/apt/sources.list.d /usr/local/lib/android 2>/dev/null
+          docker rmi `docker images -q` 2>/dev/null || true
+          [[ -n "${AGENT_TOOLSDIRECTORY}" ]] && sudo rm -rf "${AGENT_TOOLSDIRECTORY}"
+          sudo rm -rf /usr/share/dotnet /etc/apt/sources.list.d /usr/local/lib/android 2>/dev/null
           # 更新软件源并安装依赖
           sudo apt update
           sudo apt install -y build-essential clang flex bison g++ gawk \
@@ -181,6 +181,8 @@ jobs:
           chmod +x ${DIY_P2_SH}
           cd openwrt/
           ${GITHUB_WORKSPACE}/${DIY_P2_SH}
+          # 调试：输出配置文件
+          cat openwrt/.config
 
       # 步骤8：下载软件包
       - name: 下载软件包
@@ -198,8 +200,39 @@ jobs:
         run: |
           cd openwrt/
           echo -e "$(nproc) 线程编译"
-          make -j$(($(nproc) + 1)) V=s || make -j1 || make -j1 V=s
+          # 根据设备指定目标编译
+          case "${{ inputs.openwrt_board }}" in
+            "xiaomi-mi-router-wr30u-stock")
+              make -j$(($(nproc) + 1)) V=s target/linux/compile \
+                CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-wr30u-stock=y || \
+                make -j1 V=s target/linux/compile \
+                CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-wr30u-stock=y
+              ;;
+            "xiaomi-mi-router-wr30u-openwrt")
+              make -j$(($(nproc) + 1)) V=s target/linux/compile \
+                CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-wr30u-openwrt=y || \
+                make -j1 V=s target/linux/compile \
+                CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-wr30u-openwrt=y
+              ;;
+            "xiaomi-mi-router-wr30u-112m-nmbm")
+              make -j$(($(nproc) + 1)) V=s target/linux/compile \
+                CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-wr30u-112m-nmbm=y || \
+                make -j1 V=s target/linux/compile \
+                CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-wr30u-112m-nmbm=y
+              ;;
+            "xiaomi-mi-router-cr6608")
+              make -j$(($(nproc) + 1)) V=s target/linux/compile \
+                CONFIG_TARGET_ramips_mt7621_DEVICE_xiaomi_mi-router-cr6608=y || \
+                make -j1 V=s target/linux/compile \
+                CONFIG_TARGET_ramips_mt7621_DEVICE_xiaomi_mi-router-cr6608=y
+              ;;
+            "all")
+              make -j$(($(nproc) + 1)) V=s || make -j1 || make -j1 V=s
+              ;;
+          esac
           echo "status=success" >> ${GITHUB_OUTPUT}
+          # 调试：输出生成的文件
+          ls -l bin/targets/*/*/
 
       # 步骤10：清理服务器空间并准备输出
       - name: 清理服务器空间
@@ -208,14 +241,36 @@ jobs:
         run: |
           cd openwrt/
           mkdir output
-          cp -f bin/targets/*/*/*.bin output/ 2>/dev/null || true
+          cp -f bin/targets/*/*/*rootfs.tar.gz output/ 2>/dev/null || true
+          # 重命名固件以确保正确命名
+          case "${{ inputs.openwrt_board }}" in
+            "xiaomi-mi-router-wr30u-stock")
+              mv bin/targets/mediatek/filogic/openwrt-mediatek-filogic-openwrt_one-nor-factory.bin \
+                 output/openwrt-mediatek-filogic-xiaomi-mi-router-wr30u-stock-nor-factory.bin 2>/dev/null || true
+              cp bin/targets/mediatek/filogic/*factory.bin output/ 2>/dev/null || true
+              ;;
+            "xiaomi-mi-router-wr30u-openwrt")
+              mv bin/targets/mediatek/filogic/openwrt-mediatek-filogic-openwrt_one-nor-factory.bin \
+                 output/openwrt-mediatek-filogic-xiaomi-mi-router-wr30u-openwrt-nor-factory.bin 2>/dev/null || true
+              cp bin/targets/mediatek/filogic/*factory.bin output/ 2>/dev/null || true
+              ;;
+            "xiaomi-mi-router-wr30u-112m-nmbm")
+              mv bin/targets/mediatek/filogic/openwrt-mediatek-filogic-openwrt_one-nor-factory.bin \
+                 output/openwrt-mediatek-filogic-xiaomi-mi-router-wr30u-112m-nmbm-nor-factory.bin 2>/dev/null || true
+              cp bin/targets/mediatek/filogic/*factory.bin output/ 2>/dev/null || true
+              ;;
+            "xiaomi-mi-router-cr6608")
+              cp bin/targets/ramips/mt7621/*factory.bin output/ 2>/dev/null || true
+              ;;
+            "all")
+              cp bin/targets/*/*/*factory.bin output/ 2>/dev/null || true
+              ;;
+          esac
           cp -f .config output/config
           rm -rf $(ls . | grep -v "^output$" | xargs) 2>/dev/null
-
           # 生成sha256sum校验文件
           cd output/
           for file in *; do [[ ! -d "${file}" ]] && sha256sum "${file}" >"${file}.sha"; done
-
           # 输出磁盘使用情况
           df -hT ${PWD}
           echo "status=success" >> ${GITHUB_OUTPUT}
