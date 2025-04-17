@@ -1,5 +1,5 @@
 # 编译OpenWrt固件
-name: 编译OpenWrt固件
+name: 22编译OpenWrt固件
 
 on:
   repository_dispatch:
