@@ -1,4 +1,4 @@
-name: 电视盒子编译
+name: 333电视盒子编译
 
 on:
   repository_dispatch:
