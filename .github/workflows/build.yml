@@ -58,7 +58,7 @@ jobs:
         run: |
           # 清理Docker镜像和不必要的软件
           docker rmi `docker images -q` 2>/dev/null || true
-          sudo rm -rf /usr/share/dotnet /etc/apt/sources.list.d /usr/local/lib/android 2>/dev/null
+          # sudo rm -rf /usr/share/dotnet /etc/apt/sources.list.d /usr/local/lib/android 2>/dev/null
           # 更新软件源并安装依赖
           sudo apt update
           sudo apt install -y build-essential clang flex bison g++ gawk \
