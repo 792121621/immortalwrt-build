@@ -1,11 +1,10 @@
 #============================================================================================
-# Description: 编译Xiaomi Mi Router WR30U、CR6608及all设备的OpenWrt固件
+# Description: 编译Xiaomi Mi Router WR30U、CR6608及all的OpenWrt/ImmortalWrt固件
 #============================================================================================
 
-name: 22编译OpenWrt固件
+name: 编译路由器OpenWrt固件
 
 on:
-  repository_dispatch:
   workflow_dispatch:
     inputs:
       source_branch:
@@ -16,39 +15,38 @@ on:
         options:
           - openwrt-main
           - immortalwrt-master
-      openwrt_board:
+          - all
+      device:
         description: "选择设备型号"
         required: false
         default: "all"
         type: choice
         options:
           - all
-          - xiaomi_wr30u_stock
-          - xiaomi_wr30u_openwrt
-          - xiaomi_wr30u_112m_nmbm
-          - xiaomi_cr6608
-      openwrt_version:
-        description: "选择固件版本（为空使用最新版）"
+          - xiaomi-mi-router-wr30u-stock
+          - xiaomi-mi-router-wr30u-openwrt-uboot
+          - xiaomi-mi-router-wr30u-112m-ubi-nmbm
+          - xiaomi-mi-router-cr6608
+      version:
+        description: "指定固件版本（为空使用最新版）"
         required: false
         default: ""
-        type: string
 
 env:
+  TZ: Asia/Shanghai
+  # 配置文件路径
   FEEDS_CONF: config/${{ inputs.source_branch }}/feeds.conf.default
-  CONFIG_FILE: config/${{ inputs.source_branch }}/config
   DIY_P1_SH: config/${{ inputs.source_branch }}/diy-part1.sh
   DIY_P2_SH: config/${{ inputs.source_branch }}/diy-part2.sh
-  TZ: Asia/Shanghai
 
 jobs:
   build:
     runs-on: ubuntu-24.04
-    if: ${{ github.event.repository.owner.id }} == ${{ github.event.sender.id }}
 
     steps:
       # 步骤1：检出代码仓库
       - name: 检出代码
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # 步骤2：初始化编译环境
       - name: 初始化环境
@@ -56,25 +54,19 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          # 清理环境
-          # docker rmi `docker images -q`
-          # [[ -n "${AGENT_TOOLSDIRECTORY}" ]] && sudo rm -rf "${AGENT_TOOLSDIRECTORY}"
-          # sudo rm -rf /usr/share/dotnet /etc/apt/sources.list.d /usr/local/lib/android 2>/dev/null
-          
-          # 安装依赖
+          # 清理Docker镜像
+          # docker rmi `docker images -q` 2>/dev/null || true
+          # 更新软件源并安装依赖
           sudo apt update
           sudo apt install -y build-essential clang flex bison g++ gawk \
-          gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
-          python3-setuptools rsync swig unzip zlib1g-dev file wget
-          
-          # 清理apt缓存
-          sudo apt-get -y autoremove --purge
-          sudo apt-get clean
-          
+            gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
+            python3-setuptools rsync swig unzip zlib1g-dev file wget
+          # 清理无用软件包
+          sudo apt autoremove -y --purge
+          sudo apt clean
           # 创建工作目录
           sudo mkdir -p /workdir
           sudo chown ${USER}:${GROUPS} /workdir
-          
           # 设置时区
           sudo timedatectl set-timezone "${TZ}"
           echo "status=success" >> ${GITHUB_OUTPUT}
@@ -83,166 +75,124 @@ jobs:
       - name: 克隆源码 [ ${{ inputs.source_branch }} ]
         id: codes
         working-directory: /workdir
-        if: ${{ steps.init.outputs.status }} == 'success' && !cancelled()
+        if: ${{ steps.init.outputs.status == 'success' && !cancelled() }}
         run: |
-          # 根据分支设置仓库信息
+          # 根据分支选择源码仓库
           if [[ "${{ inputs.source_branch }}" == "openwrt-main" ]]; then
               REPO_URL="https://github.com/openwrt/openwrt"
               REPO_BRANCH="main"
-              TAGS_NAME="official"
+              TAGS_NAME="openwrt"
           elif [[ "${{ inputs.source_branch }}" == "immortalwrt-master" ]]; then
               REPO_URL="https://github.com/immortalwrt/immortalwrt"
               REPO_BRANCH="master"
               TAGS_NAME="immortalwrt"
           else
-              echo "未知源码仓库"
-              exit 1
+              REPO_URL="https://github.com/openwrt/openwrt"
+              REPO_BRANCH="main"
+              TAGS_NAME="openwrt"
           fi
 
-          # 如果指定了版本，使用指定版本
-          if [[ -n "${{ inputs.openwrt_version }}" ]]; then
-              REPO_BRANCH="${{ inputs.openwrt_version }}"
+          # 如果指定版本，切换到对应tag
+          if [[ -n "${{ inputs.version }}" ]]; then
+              git clone -q --single-branch --depth=1 --branch=${{ inputs.version }} ${REPO_URL} openwrt
+          else
+              git clone -q --single-branch --depth=1 --branch=${REPO_BRANCH} ${REPO_URL} openwrt
           fi
 
-          # 克隆源码
-          git clone -q --single-branch --depth=1 --branch=${REPO_BRANCH} ${REPO_URL} openwrt
           ln -sf /workdir/openwrt ${GITHUB_WORKSPACE}/openwrt
-
-          # 设置输出信息
-          echo "build_tag=OpenWrt_${TAGS_NAME}_$(date +'%Y.%m')" >> ${GITHUB_OUTPUT}
-          echo -e "REPO_URL: [ ${REPO_URL} ]\nREPO_BRANCH: [ ${REPO_BRANCH} ]\nTAGS_NAME: [ ${TAGS_NAME} ]"
-          df -hT ${PWD}
+          echo "build_tag=OpenWrt_${TAGS_NAME}_$(date +%Y.%m)" >> ${GITHUB_OUTPUT}
           echo "status=success" >> ${GITHUB_OUTPUT}
 
-      # 步骤4：根据设备选择配置文件
-      - name: 选择设备配置文件
-        id: config
-        run: |
-          # 根据设备选择架构和DTS文件
-          case "${{ inputs.openwrt_board }}" in
-            "xiaomi_wr30u_stock")
-              ARCH="mediatek/filogic"
-              DTS="mt7981b-xiaomi-mi-router-wr30u-stock.dts"
-              ;;
-            "xiaomi_wr30u_openwrt")
-              ARCH="mediatek/filogic"
-              DTS="mt7981b-xiaomi-mi-router-wr30u-openwrt.dts"
-              ;;
-            "xiaomi_wr30u_112m_nmbm")
-              ARCH="mediatek/filogic"
-              DTS="mt7981b-xiaomi-mi-router-wr30u-112m-nmbm.dts"
-              ;;
-            "xiaomi_cr6608")
-              ARCH="ramips/mt7621"
-              DTS="mt7621-xiaomi-mi-router-cr6608.dts"
-              ;;
-            "all")
-              ARCH="generic"
-              DTS=""
-              ;;
-          esac
-
-          # 设置config文件路径
-          if [[ "${ARCH}" != "generic" ]]; then
-            CONFIG_PATH="openwrt/target/linux/${ARCH}/config-6.6"
-            if [[ -f "${CONFIG_PATH}" ]]; then
-              cp -f "${CONFIG_PATH}" openwrt/.config
-            else
-              echo "未找到配置文件：${CONFIG_PATH}"
-              exit 1
-            fi
-          fi
-
-          # 如果选择了具体设备，验证DTS文件
-          if [[ -n "${DTS}" ]]; then
-            DTS_PATH="openwrt/target/linux/${ARCH}/dts/${DTS}"
-            if [[ ! -f "${DTS_PATH}" ]]; then
-              echo "未找到DTS文件：${DTS_PATH}"
-              exit 1
-            fi
-          fi
-
-          echo "status=success" >> ${GITHUB_OUTPUT}
-
-      # 步骤5：加载自定义feeds
+      # 步骤4：加载自定义feeds
       - name: 加载自定义feeds
         run: |
+          # 复制feeds配置文件
           [[ -f "${FEEDS_CONF}" ]] && cp -f ${FEEDS_CONF} openwrt/feeds.conf.default
           chmod +x ${DIY_P1_SH}
           cd openwrt/
           ${GITHUB_WORKSPACE}/${DIY_P1_SH}
 
-      # 步骤6：更新feeds
+      # 步骤5：更新feeds
       - name: 更新feeds
         run: cd openwrt/ && ./scripts/feeds update -a
 
-      # 步骤7：安装feeds
+      # 步骤6：安装feeds
       - name: 安装feeds
         run: cd openwrt/ && ./scripts/feeds install -a
 
-      # 步骤8：加载自定义配置
-      - name: 加载自定义配置
+      # 步骤7：加载设备配置文件
+      - name: 加载设备配置文件
         run: |
-          [[ -d "files" ]] && mv -f files openwrt/files
-          [[ -e "${CONFIG_FILE}" ]] && cp -f ${CONFIG_FILE} openwrt/.config
+          # 根据设备选择架构和DTS文件
+          case "${{ inputs.device }}" in
+            "xiaomi-mi-router-wr30u-stock")
+              CONFIG_FILE="target/linux/mediatek/filogic/config-6.6"
+              DTS_FILE="target/linux/mediatek/dts/mt7981b-xiaomi-mi-router-wr30u-stock.dts"
+              ;;
+            "xiaomi-mi-router-wr30u-openwrt-uboot")
+              CONFIG_FILE="target/linux/mediatek/filogic/config-6.6"
+              DTS_FILE="target/linux/mediatek/dts/mt7981b-xiaomi-mi-router-wr30u-openwrt-uboot.dts"
+              ;;
+            "xiaomi-mi-router-wr30u-112m-ubi-nmbm")
+              CONFIG_FILE="target/linux/mediatek/filogic/config-6.6"
+              DTS_FILE="target/linux/mediatek/dts/mt7981b-xiaomi-mi-router-wr30u-112m-ubi-nmbm.dts"
+              ;;
+            "xiaomi-mi-router-cr6608")
+              CONFIG_FILE="target/linux/ramips/mt7621/config-6.6"
+              DTS_FILE="target/linux/ramips/dts/mt7621-xiaomi-mi-router-cr6608.dts"
+              ;;
+            "all")
+              CONFIG_FILE="target/linux/mediatek/filogic/config-6.6"
+              DTS_FILE=""
+              ;;
+          esac
+
+          # 复制配置文件
+          [[ -n "${CONFIG_FILE}" ]] && cp -f openwrt/${CONFIG_FILE} openwrt/.config
+          [[ -n "${DTS_FILE}" ]] && cp -f openwrt/${DTS_FILE} openwrt/arch/arm64/boot/dts/mediatek/
           chmod +x ${DIY_P2_SH}
           cd openwrt/
           ${GITHUB_WORKSPACE}/${DIY_P2_SH}
 
-      # 步骤9：下载软件包
+      # 步骤8：下载软件包
       - name: 下载软件包
         id: package
         run: |
           cd openwrt/
           make defconfig
           make download -j8
-          find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
+          echo "status=success" >> ${GITHUB_OUTPUT}
 
-      # 步骤10：编译OpenWrt固件
-      - name: 编译OpenWrt
+      # 步骤9：编译固件
+      - name: 编译固件
         id: compile
         run: |
           cd openwrt/
-          echo -e "$(nproc) 线程编译"
-          make -j$(($(nproc) + 1)) V=s || make -j1 || make -j1 V=s
+          echo "使用$(nproc)线程编译"
+          make -j$(($(nproc) + 1)) V=s || make -j1 V=s
           echo "status=success" >> ${GITHUB_OUTPUT}
 
-      # 步骤11：清理服务器空间并整理输出
-      - name: 清理空间并整理输出
+      # 步骤10：清理并整理输出
+      - name: 清理并整理输出
         id: clean
-        if: ${{ steps.compile.outputs.status }} == 'success' && !cancelled()
+        if: ${{ steps.compile.outputs.status == 'success' && !cancelled() }}
         run: |
           cd openwrt/
           mkdir output
           cp -f bin/targets output/
           cp -f .config output/config
-          rm -rf $(ls . | grep -v "^output$" | xargs) 2>/dev/null
-
-          # 生成sha256sum校验文件
+          # 生成sha256校验文件
           cd output/
           for file in *; do [[ ! -d "${file}" ]] && sha256sum "${file}" >"${file}.sha"; done
-
-          df -hT ${PWD}
           echo "status=success" >> ${GITHUB_OUTPUT}
 
-      # 步骤12：上传固件到Release
+      # 步骤11：上传固件到Release
       - name: 上传固件到Release
-        uses: ncipollo/release-action@main
-        if: ${{ steps.clean.outputs.status }} == 'success' && !cancelled()
+        uses: ncipollo/release-action@v1
+        if: ${{ steps.clean.outputs.status == 'success' && !cancelled() }}
         with:
           tag: ${{ steps.codes.outputs.build_tag }}
           artifacts: openwrt/output/*
           allowUpdates: true
-          removeArtifacts: false
-          replacesArtifacts: true
           token: ${{ secrets.GH_TOKEN }}
-          body: |
-            ### OpenWrt固件信息
-            - 默认IP: 192.168.1.1
-            - 默认用户名: root
-            - 默认密码: password
-            - 默认WIFI名称: OpenWrt
-            - 默认WIFI密码: 无
-            ### 固件校验
-            - sha256sum
