@@ -51,15 +51,46 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-   
-          # 更新软件源并安装依赖
-          sudo apt update
-          sudo apt install -y build-essential clang flex bison g++ gawk \
-          gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
-          python3-setuptools rsync swig unzip zlib1g-dev file wget
+          # 清理Docker镜像
+          docker rmi `docker images -q` 2>/dev/null || true
+          # 清理不必要的软件包和文件
+          sudo rm -rf /usr/share/dotnet /etc/apt/sources.list.d /usr/local/lib/android 2>/dev/null
+          # 配置软件源
+          echo "配置软件源..."
+          sudo bash -c 'cat << EOF > /etc/apt/sources.list
+          deb http://archive.ubuntu.com/ubuntu/ noble main restricted universe multiverse
+          deb http://archive.ubuntu.com/ubuntu/ noble-updates main restricted universe multiverse
+          deb http://archive.ubuntu.com/ubuntu/ noble-backports main restricted universe multiverse
+          deb http://security.ubuntu.com/ubuntu/ noble-security main restricted universe multiverse
+          EOF'
+          # 更新软件源
+          sudo apt-get update -y || { echo "软件源更新失败"; exit 1; }
+          # 安装编译依赖
+          echo "安装编译依赖..."
+          sudo apt-get install -y \
+            build-essential \
+            clang \
+            flex \
+            bison \
+            g++ \
+            gawk \
+            gcc \
+            gettext \
+            git \
+            libncurses-dev \
+            libssl-dev \
+            python3-setuptools \
+            rsync \
+            swig \
+            unzip \
+            zlib1g-dev \
+            file \
+            wget || { echo "依赖安装失败，请检查日志"; exit 1; }
+          # 验证依赖安装
+          dpkg -l | grep -E "build-essential|clang|flex|bison|g++|gawk|gcc|gettext|git|libncurses-dev|libssl-dev|python3-setuptools|rsync|swig|unzip|zlib1g-dev|file|wget" || true
           # 清理软件包缓存
-          sudo apt autoremove --purge -y
-          sudo apt clean
+          sudo apt-get autoremove --purge -y
+          sudo apt-get clean
           # 创建工作目录
           sudo mkdir -p /workdir
           sudo chown ${USER}:${GROUPS} /workdir
@@ -109,89 +140,46 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      # 加载设备配置文件
-      - name: 加载设备配置文件
-        run: |
-          cd openwrt/
-          # 根据设备选择配置文件
-          case "${{ inputs.device }}" in
-            "xiaomi-mi-router-wr30u-stock")
-              cp target/linux/mediatek/filogic/config-6.6 .config
-              echo "CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-wr30u-stock=y" >> .config
-              ;;
-            "xiaomi-mi-router-wr30u-openwrt")
-              cp target/linux/mediatek/filogic/config-6.6 .config
-              echo "CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-wr30u-openwrt=y" >> .config
-              ;;
-            "xiaomi-mi-router-wr30u-112m-nmbm")
-              cp target/linux/mediatek/filogic/config-6.6 .config
-              echo "CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-wr30u-112m-nmbm=y" >> .config
-              ;;
-            "xiaomi-mi-router-cr6608")
-              cp target/linux/ramips/mt7621/config-6.6 .config
-              echo "CONFIG_TARGET_ramips_mt7621_DEVICE_xiaomi_mi-router-cr6608=y" >> .config
-              ;;
-            "all")
-              cp target/linux/mediatek/filogic/config-6.6 .config
-              cp target/linux/ramips/mt7621/config-6.6 .config
-              echo "CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-wr30u-stock=y" >> .config
-              echo "CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-wr30u-openwrt=y" >> .config
-              echo "CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-wr30u-112m-nmbm=y" >> .config
-              echo "CONFIG_TARGET_ramips_mt7621_DEVICE_xiaomi_mi-router-cr6608=y" >> .config
-              ;;
-          esac
-          make defconfig
-
-      # 下载软件包
-      - name: 下载软件包
-        id: package
-        run: |
-          cd openwrt/
-          make download -j8
-          find dl -size -1024c -exec rm -f {} \;
-
-      # 编译固件
-      - name: 编译固件
+      # 加载设备配置文件并编译
+      - name: 加载设备配置文件并编译
         id: compile
         run: |
           cd openwrt/
-          echo -e "使用$(nproc)线程编译"
-          make -j$(($(nproc) + 1)) V=s || make -j1 V=s
-          echo "status=success" >> ${GITHUB_OUTPUT}
+          # 定义设备和架构映射
+          declare -A devices=(
+            ["xiaomi-mi-router-wr30u-stock"]="mediatek/filogic|CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-wr30u-stock=y"
+            ["xiaomi-mi-router-wr30u-openwrt"]="mediatek/filogic|CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-wr30u-openwrt=y"
+            ["xiaomi-mi-router-wr30u-112m-nmbm"]="mediatek/filogic|CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-wr30u-112m-nmbm=y"
+            ["xiaomi-mi-router-cr6608"]="ramips/mt7621|CONFIG_TARGET_ramips_mt7621_DEVICE_xiaomi_mi-router-cr6608=y"
+          )
 
-      # 清理和打包输出
-      - name: 清理和打包输出
-        id: clean
-        if: steps.compile.outputs.status == 'success' && !cancelled()
-        run: |
-          cd openwrt/
-          mkdir -p output
-          # 复制固件到输出目录
-          cp -rf bin/targets/*/*/openwrt-* output/
-          cp -f .config output/config
-          # 生成sha256sum校验文件
-          cd output/
-          for file in *; do [[ ! -d "${file}" ]] && sha256sum "${file}" >"${file}.sha"; done
-          df -hT ${PWD}
-          echo "status=success" >> ${GITHUB_OUTPUT}
+          # 根据输入设备选择编译
+          if [[ "${{ inputs.device }}" == "all" ]]; then
+            devices_to_build=("xiaomi-mi-router-wr30u-stock" "xiaomi-mi-router-wr30u-openwrt" "xiaomi-mi-router-wr30u-112m-nmbm" "xiaomi-mi-router-cr6608")
+          else
+            devices_to_build=("${{ inputs.device }}")
+          fi
 
-      # 上传固件到Release
-      - name: 上传固件到Release
-        uses: ncipollo/release-action@v1
-        if: steps.clean.outputs.status == 'success' && !cancelled()
-        with:
-          tag: ${{ steps.codes.outputs.build_tag }}
-          artifacts: openwrt/output/*
-          allowUpdates: true
-          removeArtifacts: false
-          replacesArtifacts: true
-          token: ${{ secrets.GH_TOKEN }}
-          body: |
-            ### 固件信息
-            - 默认IP: 192.168.1.1
-            - 默认用户名: root
-            - 默认密码: password
-            - 默认WiFi名称: OpenWrt
-            - 默认WiFi密码: 无
-            ### 固件验证
-            - 使用sha256sum校验文件
+          # 循环编译每个设备
+          for device in "${devices_to_build[@]}"; do
+            echo "正在为设备 $device 编译..."
+            # 获取架构和设备配置
+            IFS='|' read -r arch config <<< "${devices[$device]}"
+            config_file="target/linux/${arch}/config-6.6"
+
+            # 检查配置文件是否存在
+            if [[ ! -f "$config_file" ]]; then
+              echo "错误：配置文件 $config_file 不存在！"
+              exit 1
+            fi
+
+            # 清理旧的配置和构建
+            make distclean
+            # 复制配置文件
+            cp "$config_file" .config
+            # 添加设备配置
+            echo "$config" >> .config
+            # 设置目标架构
+            if [[ "$arch" == "mediatek/filogic" ]]; then
+              echo "CONFIG_TARGET_mediatek=y" >> .config
+              echo "CONFIG_TARGET_m
