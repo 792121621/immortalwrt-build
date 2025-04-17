@@ -190,7 +190,7 @@ jobs:
         run: |
           cd openwrt/
           mkdir output
-          cp -f bin/targets/*/*/*rootfs.tar.gz output/ 2>/dev/null || true
+          cp -f bin/targets output/ 2>/dev/null || true
           cp -f .config output/config
           cd output/
           for file in *; do [[ ! -d "${file}" ]] && sha256sum "${file}" >"${file}.sha"; done
