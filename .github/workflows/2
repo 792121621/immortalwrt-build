@@ -1,0 +1,154 @@
+# 编译OpenWrt固件
+name: 编译OpenWrt固件
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: '选择源代码仓库'
+        required: true
+        type: choice
+        options:
+          - openwrt
+          - immortalwrt
+      repo_version:
+        description: '指定版本标签，留空使用最新main/master'
+        required: false
+        type: string
+      device:
+        description: '选择设备。注意：某些布局仅在ImmortalWrt中可用。'
+        required: true
+        type: choice
+        options:
+          - Xiaomi Mi Router WR30U (stock layout)
+          - Xiaomi Mi Router WR30U (OpenWrt U-Boot layout)
+          - Xiaomi Mi Router WR30U (112M UBI with NMBM-Enabled layout)
+          - Xiaomi Mi Router CR6608
+          - all
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Initialization environment
+        run: |
+          # 初始化环境
+          sudo apt update
+          sudo apt install -y build-essential clang flex bison g++ gawk \
+          gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
+          python3-setuptools rsync swig unzip zlib1g-dev file wget
+          sudo mkdir -p /workdir
+          sudo chown ${USER}:${GROUPS} /workdir
+
+      - name: Clone source code
+        working-directory: /workdir
+        run: |
+          # 克隆源代码
+          if [ "${{ inputs.source_repo }}" == "openwrt" ]; then
+            REPO_URL="https://github.com/openwrt/openwrt"
+            DEFAULT_BRANCH="main"
+          else
+            REPO_URL="https://github.com/immortalwrt/immortalwrt"
+            DEFAULT_BRANCH="master"
+          fi
+          if [ -z "${{ inputs.repo_version }}" ]; then
+            BRANCH="${DEFAULT_BRANCH}"
+          else
+            BRANCH="${{ inputs.repo_version }}"
+          fi
+          git clone --single-branch --depth=1 --branch ${BRANCH} ${REPO_URL} openwrt
+          cd openwrt
+
+      - name: Update feeds
+        run: |
+          # 更新feeds
+          cd /workdir/openwrt
+          ./scripts/feeds update -a
+
+      - name: Install feeds
+        run: |
+          # 安装feeds
+          cd /workdir/openwrt
+          ./scripts/feeds install -a
+
+      - name: Build firmware
+        run: |
+          # 编译固件
+          cd /workdir/openwrt
+          # Define devices
+          if [ "${{ inputs.device }}" == "all" ]; then
+            DEVICE_LIST=("WR30U_stock" "WR30U_uboot" "WR30U_112m" "CR6608")
+          else
+            case "${{ inputs.device }}" in
+              "Xiaomi Mi Router WR30U (stock layout)")
+                DEVICE_LIST=("WR30U_stock")
+                ;;
+              "Xiaomi Mi Router WR30U (OpenWrt U-Boot layout)")
+                DEVICE_LIST=("WR30U_uboot")
+                ;;
+              "Xiaomi Mi Router WR30U (112M UBI with NMBM-Enabled layout)")
+                DEVICE_LIST=("WR30U_112m")
+                ;;
+              "Xiaomi Mi Router CR6608")
+                DEVICE_LIST=("CR6608")
+                ;;
+            esac
+          fi
+          for dev in "${DEVICE_LIST[@]}"; do
+            case "$dev" in
+              "WR30U_stock")
+                TARGET="mediatek"
+                SUBTARGET="filogic"
+                DEVICE_NAME="xiaomi_mi-router-wr30u-stock"
+                ;;
+              "WR30U_uboot")
+                TARGET="mediatek"
+                SUBTARGET="filogic"
+                DEVICE_NAME="xiaomi_mi-router-wr30u-ubootmod"
+                ;;
+              "WR30U_112m")
+                TARGET="mediatek"
+                SUBTARGET="filogic"
+                DEVICE_NAME="xiaomi_mi-router-wr30u-112m-nmbm"
+                ;;
+              "CR6608")
+                TARGET="ramips"
+                SUBTARGET="mt7621"
+                DEVICE_NAME="xiaomi_mi-router-cr6608"
+                ;;
+            esac
+            # Set config
+            ./scripts/config -d CONFIG_TARGET_all
+            ./scripts/config -e CONFIG_TARGET_${TARGET}
+            ./scripts/config -e CONFIG_TARGET_${TARGET}_${SUBTARGET}
+            ./scripts/config -e CONFIG_TARGET_${TARGET}_${SUBTARGET}_DEVICE_${DEVICE_NAME}
+            make defconfig
+            # Build
+            make download -j8
+            make -j$(nproc) || make -j1 || make -j1 V=s
+            # Collect output
+            mkdir -p /workdir/output/${DEVICE_NAME}
+            cp bin/targets/${TARGET}/${SUBTARGET}/*-${DEVICE_NAME}-* /workdir/output/${DEVICE_NAME}/
+          done
+
+      - name: Generate sha256sum
+        run: |
+          # 生成sha256sum
+          cd /workdir/output
+          for dir in *; do
+            cd $dir
+            for file in *; do
+              [[ ! -d "${file}" ]] && sha256sum "${file}" >"${file}.sha"
+            done
+            cd ..
+          done
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: openwrt-firmware
+          path: /workdir/output/**
