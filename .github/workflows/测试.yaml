@@ -11,18 +11,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 检出当前仓库
+    # 检出当前仓库（如果需要自定义配置）
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # 获取完整历史以便创建标签
+        fetch-depth: 0  # 确保获取完整的 Git 历史以便创建标签
 
     # 克隆 OpenWrt 源码
     - name: Clone OpenWrt source
       run: |
         git clone https://github.com/openwrt/openwrt.git openwrt
         cd openwrt
-        git checkout master  # 或指定版本，如 v23.05.3
+        git checkout master  # 或者指定特定版本，如 v23.05.3
 
     # 安装依赖
     - name: Install dependencies
@@ -53,14 +53,12 @@ jobs:
         name: openwrt-config
         path: openwrt/openwrt-config-*.config
 
-    # 创建 Git 标签并推送
+    # 创建并推送 Git 标签
     - name: Create and push Git tag
       run: |
-        TAG_NAME="config-$(date +%Y%m%d)"
-        git config user.name "GitHub Actions"
-        git config user.email "actions@github.com"
-        git tag -a "$TAG_NAME" -m "Auto-generated tag for OpenWrt config $TAG_NAME"
-        git push origin "$TAG_NAME"
+        TAG_NAME=config-$(date +%Y%m%d)
+        git tag $TAG_NAME
+        git push origin $TAG_NAME
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -69,12 +67,9 @@ jobs:
       uses: softprops/action-gh-release@v2
       if: github.event_name == 'push'
       with:
-        tag_name: config-${{ steps.date.outputs.date }}
-        name: OpenWrt Config ${{ steps.date.outputs.date }}
+        tag_name: config-$(date +%Y%m%d)
+        name: OpenWrt Config $(date +%Y%m%d)
         body: Auto-generated OpenWrt .config file
         files: openwrt/openwrt-config-*.config
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # 定义日期输出
-      id: date
-      run: echo "::set-output name=date::$(date +%Y%m%d)"
