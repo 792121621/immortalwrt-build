@@ -58,9 +58,9 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         run: |
           # 清理 Docker 镜像和不必要的工具
-          docker rmi `docker images -q` || true
-          [[ -n "${AGENT_TOOLSDIRECTORY}" ]] && sudo rm -rf "${AGENT_TOOLSDIRECTORY}"
-          sudo rm -rf /usr/share/dotnet /etc/apt/sources.list.d /usr/local/lib/android 2>/dev/null
+          # docker rmi `docker images -q` || true
+          # [[ -n "${AGENT_TOOLSDIRECTORY}" ]] && sudo rm -rf "${AGENT_TOOLSDIRECTORY}"
+          # sudo rm -rf /usr/share/dotnet /etc/apt/sources.list.d /usr/local/lib/android 2>/dev/null
           # 更新软件源并安装依赖
           sudo apt update
           sudo apt install -y build-essential clang flex bison g++ gawk \
