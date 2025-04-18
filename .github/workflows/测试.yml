@@ -135,7 +135,7 @@ jobs:
               echo "CONFIG_TARGET_ramips_mt7621_DEVICE_xiaomi_mi-router-cr6608=y" >> .config
               ;;
           esac
-          # make defconfig
+          make defconfig
       # 下载软件包
       - name: 下载软件包
         id: package
