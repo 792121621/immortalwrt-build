@@ -158,12 +158,8 @@ jobs:
 
           # 复制官方配置文件
           cd openwrt/
-          if [[ -f "${CONFIG_SRC}" ]]; then
-              cp -f "${CONFIG_SRC}" .config
-          else
-              echo "错误: 配置文件 ${CONFIG_SRC} 不存在"
-              exit 1
-          fi
+          cp "${CONFIG_SRC}" .config
+     
 
           # 根据设备布局修改配置文件
           if [[ "${{ inputs.openwrt_board }}" == "xiaomi_wr30u-stock" ]]; then
