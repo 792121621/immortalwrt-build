@@ -53,22 +53,22 @@ jobs:
         name: openwrt-config
         path: openwrt/openwrt-config-*.config
 
-    # 创建并推送 Git 标签
+    # 设置标签名称并创建 Git 标签
     - name: Create and push Git tag
       run: |
-        TAG_NAME=config-$(date +%Y%m%d)
-        git tag $TAG_NAME
-        git push origin $TAG_NAME
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        echo "TAG_NAME=config-$(date +%Y%m%d)" >> $GITHUB_ENV
+        git config --global user.name 'GitHub Actions'
+        git config --global user.email 'actions@github.com'
+        git tag ${{ env.TAG_NAME }}
+        git push origin ${{ env.TAG_NAME }}
 
     # 创建 Release 并上传 .config
     - name: Create Release and Upload Config
       uses: softprops/action-gh-release@v2
       if: github.event_name == 'push'
       with:
-        tag_name: config-$(date +%Y%m%d)
-        name: OpenWrt Config $(date +%Y%m%d)
+        tag_name: ${{ env.TAG_NAME }}
+        name: OpenWrt Config ${{ env.TAG_NAME }}
         body: Auto-generated OpenWrt .config file
         files: openwrt/openwrt-config-*.config
       env:
