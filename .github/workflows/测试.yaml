@@ -27,8 +27,8 @@ jobs:
     - name: Setup OpenWrt environment
       run: |
         # 更新 feeds
-        cd openwrt/ && ./scripts/feeds update -a
-        cd openwrt/ && ./scripts/feeds install -a
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
 
     # 运行 make defconfig
     - name: Generate .config
