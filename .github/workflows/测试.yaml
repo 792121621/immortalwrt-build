@@ -3,17 +3,24 @@ name: Build OpenWrt Config
 on:
   push:
     branches:
-      - main  # 触发工作流的分支
-  workflow_dispatch:  # 允许手动触发
+      - main
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    # 检出代码
+    # 检出当前仓库（如果需要自定义配置）
     - name: Checkout repository
       uses: actions/checkout@v4
+
+    # 克隆 OpenWrt 源码
+    - name: Clone OpenWrt source
+      run: |
+        git clone https://github.com/openwrt/openwrt.git openwrt
+        cd openwrt
+        git checkout master  # 或者指定特定版本，如 v23.05.3
 
     # 安装依赖
     - name: Install dependencies
@@ -26,13 +33,14 @@ jobs:
     # 设置 OpenWrt 环境
     - name: Setup OpenWrt environment
       run: |
-        # 更新 feeds
+        cd openwrt
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
     # 运行 make defconfig
     - name: Generate .config
       run: |
+        cd openwrt
         make defconfig
         mv .config openwrt-config-$(date +%Y%m%d).config
 
@@ -41,16 +49,16 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: openwrt-config
-        path: openwrt-config-*.config
+        path: openwrt/openwrt-config-*.config
 
     # 创建 Release 并上传 .config
     - name: Create Release and Upload Config
       uses: softprops/action-gh-release@v2
-      if: github.event_name == 'push'  # 仅在 push 时创建 Release
+      if: github.event_name == 'push'
       with:
         tag_name: config-$(date +%Y%m%d)
         name: OpenWrt Config $(date +%Y%m%d)
         body: Auto-generated OpenWrt .config file
-        files: openwrt-config-*.config
+        files: openwrt/openwrt-config-*.config
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
