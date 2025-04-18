@@ -163,7 +163,7 @@ jobs:
 
           # 根据设备布局修改配置文件
           if [[ "${{ inputs.openwrt_board }}" == "xiaomi_wr30u-stock" ]]; then
-              echo "CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_wr30u-stock=y" >> .config
+              echo "CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-wr30u-stock=y" >> .config
           elif [[ "${{ inputs.openwrt_board }}" == "xiaomi_wr30u-openwrt-uboot" ]]; then
               echo "CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_wr30u-openwrt-uboot=y" >> .config
           elif [[ "${{ inputs.openwrt_board }}" == "xiaomi_wr30u-112m-ubi-nmbm" ]]; then
