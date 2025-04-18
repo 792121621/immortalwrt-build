@@ -2,7 +2,7 @@
 # Description: 编译Xiaomi Mi Router WR30U和CR6608的OpenWrt/ImmortalWrt固件
 #============================================================================================
 
-name: 路由器固件编译
+name: 123路由器固件编译
 
 on:
   repository_dispatch:
