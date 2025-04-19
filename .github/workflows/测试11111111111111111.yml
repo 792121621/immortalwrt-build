@@ -159,7 +159,8 @@ jobs:
           # 复制官方配置文件
           cd openwrt/
           cp "${CONFIG_SRC}" .config
-     
+          cp -f .config output/config1
+    
 
           # 根据设备布局修改配置文件
           if [[ "${{ inputs.openwrt_board }}" == "xiaomi_wr30u-stock" ]]; then
@@ -172,6 +173,8 @@ jobs:
           elif [[ "${{ inputs.openwrt_board }}" == "xiaomi_cr6608" ]]; then
               echo "CONFIG_TARGET_ramips_mt7621_DEVICE_xiaomi_cr6608=y" >> .config
           fi
+          cp -f .config output/config2
+
 
           # 应用自定义配置
           if [[ -e "${CONFIG_FILE}" ]]; then
@@ -192,7 +195,8 @@ jobs:
         id: package
         run: |
           cd openwrt/
-          # make defconfig
+          make defconfig
+          cp -f .config output/config3
           make download -j8
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
