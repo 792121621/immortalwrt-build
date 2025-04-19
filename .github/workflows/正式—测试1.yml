@@ -240,7 +240,7 @@ jobs:
           rar a output/config测试.rar output  #我修改的!!!!!!
       # 步骤11: 上传固件到 Release
       - name: 上传固件到 Release
-        uses: ncipollo/release-action@v4
+        uses: ncipollo/release-action@v1
         if: ${{ steps.clean.outputs.status }} == 'success' && !cancelled()
         with:
           tag: 编译小米路由器固件——测试1
