@@ -162,8 +162,9 @@ jobs:
           # cp "${CONFIG_SRC}" .config
 
 
-          # 创建配置文件
-          touch .config
+          # 创建配置文件  #我增加的
+          cd openwrt/  #我修改的
+          touch .config  #我修改的
           mkdir output  #我修改的
           cp -f .config output/config测试1  #我修改的
 
