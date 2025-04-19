@@ -237,7 +237,7 @@ jobs:
         uses: ncipollo/release-action@v1
         if: ${{ steps.clean.outputs.status }} == 'success' && !cancelled()
         with:
-          tag: “不复制原始config”
+          tag: “abc”
           artifacts: openwrt/output/*
           allowUpdates: true
           removeArtifacts: false
