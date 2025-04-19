@@ -165,8 +165,7 @@ jobs:
           # 创建配置文件  #我增加的
           cd openwrt/  #我增加的
           touch .config  #我增加的
-          mkdir output  #我增加的
-          mkdir output/测试  #我增加的
+          mkdir -p output/测试  #我增加的
           cp -f .config output/测试/config测试1  #我增加的
 
           # 根据设备布局修改配置文件
