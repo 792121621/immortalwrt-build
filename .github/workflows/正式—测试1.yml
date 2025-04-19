@@ -224,8 +224,10 @@ jobs:
           cd openwrt/
           # mkdir output 我屏蔽的
           # 只输出 .ubi, .bin, .fip, .itb 文件
-          # find bin/targets/*/* -type f \( -name "*.ubi" -o -name "*.bin  -o -name "*.bin" -o -name "*.fip" -o -name "*.itb" \) -exec cp -f {} output/ \;
+          find bin/targets/*/* -type f \( -name "*.ubi" -o -name "*.bin  -o -name "*.bin" -o -name "*.fip" -o -name "*.itb" \) -exec cp -f {} output/ \;
           cp -f .config output/config
+          mkdir output111111111 #测试！！！
+          mkdir output222222222 #测试！！！
           rar a output/openwrt测试.rar .  #我增加的!!!!!!
           rm -rf $(ls . | grep -v "^output$" | xargs) 2>/dev/null
 
