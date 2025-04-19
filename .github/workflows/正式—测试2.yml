@@ -146,21 +146,26 @@ jobs:
       - name: 加载设备配置文件
         run: |
           # 根据设备选择架构和配置文件
-          if [[ "${{ inputs.openwrt_board }}" == "xiaomi_wr30u"* ]]; then
-              ARCH="mediatek/filogic"
-              CONFIG_SRC="target/linux/mediatek/filogic/config-6.6"
-          elif [[ "${{ inputs.openwrt_board }}" == "xiaomi_cr6608" ]]; then
-              ARCH="ramips/mt7621"
-              CONFIG_SRC="target/linux/ramips/mt7621/config-6.6"
-          else
-              ARCH="all"
-              CONFIG_SRC="target/linux/generic/config-6.6"
-          fi
+          # if [[ "${{ inputs.openwrt_board }}" == "xiaomi_wr30u"* ]]; then
+          #    ARCH="mediatek/filogic"
+          #    CONFIG_SRC="target/linux/mediatek/filogic/config-6.6"
+          # elif [[ "${{ inputs.openwrt_board }}" == "xiaomi_cr6608" ]]; then
+          #    ARCH="ramips/mt7621"
+          #    CONFIG_SRC="target/linux/ramips/mt7621/config-6.6"
+          # else
+          #    ARCH="all"
+          #    CONFIG_SRC="target/linux/generic/config-6.6"
+          # fi
 
           # 复制官方配置文件
-          cd openwrt/
-          cp "${CONFIG_SRC}" .config
-     
+          # cd openwrt/
+          # cp "${CONFIG_SRC}" .config
+
+
+          # 创建配置文件
+          touch .config
+          mkdir output  #我修改的
+          cp -f .config output/config测试1  #我修改的
 
           # 根据设备布局修改配置文件
           if [[ "${{ inputs.openwrt_board }}" == "xiaomi_wr30u-stock" ]]; then
@@ -173,6 +178,7 @@ jobs:
           elif [[ "${{ inputs.openwrt_board }}" == "xiaomi_cr6608" ]]; then
               echo "CONFIG_TARGET_ramips_mt7621_DEVICE_xiaomi_cr6608=y" >> .config
           fi
+          cp -f .config output/config测试2  #我修改的
 
           # 应用自定义配置
           if [[ -e "${CONFIG_FILE}" ]]; then
@@ -180,6 +186,7 @@ jobs:
           else
               echo "警告: 自定义配置文件 ${CONFIG_FILE} 不存在，跳过"
           fi
+          cp -f .config output/config测试3 #我修改的
           # 检查 diy-part2.sh 是否存在
           if [[ -f "${DIY_P2_SH}" ]]; then
               chmod +x ${DIY_P2_SH}
@@ -194,6 +201,7 @@ jobs:
         run: |
           cd openwrt/
           make defconfig
+          cp -f .config output/config测试4  #我修改的
           make download -j8
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
@@ -213,12 +221,12 @@ jobs:
         if: ${{ steps.compile.outputs.status }} == 'success' && !cancelled()
         run: |
           cd openwrt/
-          mkdir output
+          # mkdir output 我修改的
           # 只输出 .ubi, .bin, .fip, .itb 文件
           # find bin/targets/*/* -type f \( -name "*.ubi" -o -name "*.bin  -o -name "*.bin" -o -name "*.fip" -o -name "*.itb" \) -exec cp -f {} output/ \;
-          # 输出整个bin/targets
-          rar a output/targets.rar bin/targets
+          rar a output/targets.rar bin/targets  #我修改的 输出整个bin/targets
           cp -f .config output/config
+          rar a output/config测试.rar output/config测试*  #我修改的
           rm -rf $(ls . | grep -v "^output$" | xargs) 2>/dev/null
 
           # 生成 sha256sum 文件
