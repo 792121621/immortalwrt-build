@@ -217,7 +217,7 @@ jobs:
         if: ${{ steps.compile.outputs.status }} == 'success' && !cancelled()
         run: |
           cd openwrt/
-          mkdir output
+          # mkdir output
           # 只输出 .ubi, .bin, .fip, .itb 文件
           # find bin/targets/*/* -type f \( -name "*.ubi" -o -name "*.bin  -o -name "*.bin" -o -name "*.fip" -o -name "*.itb" \) -exec cp -f {} output/ \;
           rar a output/targets.rar bin/targets
