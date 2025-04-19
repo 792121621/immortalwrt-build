@@ -163,6 +163,7 @@ jobs:
 
 
           # 创建配置文件
+          cd openwrt/
           > .config
           mkdir output  #我修改的
           cp -f .config output/config测试1  #我修改的
