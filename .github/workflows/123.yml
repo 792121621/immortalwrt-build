@@ -2,7 +2,7 @@
 # Description: 编译 Xiaomi Mi Router WR30U、CR6608 设备的 OpenWrt 和 ImmortalWrt 固件
 #============================================================================================
 
-name: 测试
+name: 不复制原始config
 
 on:
   repository_dispatch:
@@ -158,7 +158,8 @@ jobs:
 
           # 复制官方配置文件
           cd openwrt/
-          cp "${CONFIG_SRC}" .config
+          > .config
+          # cp "${CONFIG_SRC}" .config
           mkdir output
           cp -f .config output/config1
     
