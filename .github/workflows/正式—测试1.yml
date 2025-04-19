@@ -237,7 +237,7 @@ jobs:
           df -hT ${PWD}
           echo "status=success" >> ${GITHUB_OUTPUT}
 
-          rar a output/config测试.rar output  #我增加的!!!!!!
+          rar a output/config测试.rar openwrt  #我增加的!!!!!!
       # 步骤11: 上传固件到 Release
       - name: 上传固件到 Release
         uses: ncipollo/release-action@v1
