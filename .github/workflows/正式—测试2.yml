@@ -186,7 +186,7 @@ jobs:
           else
               echo "警告: 自定义配置文件 ${CONFIG_FILE} 不存在，跳过"
           fi
-          cp -f .config output/config测试3 #我修改的
+          # cp -f .config output/config测试3 #我修改的
           # 检查 diy-part2.sh 是否存在
           if [[ -f "${DIY_P2_SH}" ]]; then
               chmod +x ${DIY_P2_SH}
