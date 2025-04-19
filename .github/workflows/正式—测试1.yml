@@ -246,7 +246,7 @@ jobs:
         uses: ncipollo/release-action@v1
         if: ${{ steps.clean.outputs.status }} == 'success' && !cancelled()
         with:
-          tag: 编译小米路由器固件——测试1
+          tag: 编译小米路由器固件——测试1111111111111111
           artifacts: openwrt/output/*
           allowUpdates: true
           removeArtifacts: false
