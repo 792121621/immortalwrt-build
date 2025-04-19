@@ -172,12 +172,12 @@ jobs:
           if [[ "${{ inputs.openwrt_board }}" == "xiaomi_wr30u-stock" ]]; then
               echo "CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-wr30u-stock=y" >> .config
           elif [[ "${{ inputs.openwrt_board }}" == "xiaomi_wr30u-openwrt-uboot" ]]; then
-              echo "CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_wr30u-openwrt-uboot=y" >> .config
+              echo "CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-wr30u-ubootmod=y" >> .config
           elif [[ "${{ inputs.openwrt_board }}" == "xiaomi_wr30u-112m-ubi-nmbm" ]]; then
-              echo "CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_wr30u-112m-ubi-nmbm=y" >> .config
+              echo "CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-wr30u-ubi=y" >> .config
               echo "CONFIG_NMBM=y" >> .config
           elif [[ "${{ inputs.openwrt_board }}" == "xiaomi_cr6608" ]]; then
-              echo "CONFIG_TARGET_ramips_mt7621_DEVICE_xiaomi_cr6608=y" >> .config
+              echo "CONFIG_TARGET_ramips_mt7621_DEVICE_xiaomi_mi-router-cr6608=y" >> .config
           fi
           cp -f .config output/测试/config测试2  #我增加的
 
@@ -225,9 +225,8 @@ jobs:
           # mkdir output 我屏蔽的
           # 只输出 .ubi, .bin, .fip, .itb 文件
           # find bin/targets/*/* -type f \( -name "*.ubi" -o -name "*.bin  -o -name "*.bin" -o -name "*.fip" -o -name "*.itb" \) -exec cp -f {} output/ \;
-          # rar a output/targets.rar bin/targets  #我修改的 输出整个bin/targets
-          rar a output/config测试.rar openwrt  #我增加的!!!!!!
           cp -f .config output/config
+          rar a output/openwrt测试.rar openwrt  #我增加的!!!!!!
           rm -rf $(ls . | grep -v "^output$" | xargs) 2>/dev/null
 
           # 生成 sha256sum 文件
