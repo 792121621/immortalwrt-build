@@ -1,0 +1,10 @@
+复制/target/linux/mediatek/filogic/config-6.6
+加入echo "CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-wr30u-stock=y" >> .config
+使用make defconfig
+
+和
+
+直接加入echo "CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-wr30u-stock=y" >> .config
+使用make defconfig
+
+是一样的
