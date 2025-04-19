@@ -165,8 +165,8 @@ jobs:
           # 创建配置文件  #我增加的
           cd openwrt/  #我修改的
           touch .config  #我修改的
-          mkdir output  #我修改的
-          cp -f .config output/config测试1  #我修改的
+          mkdir output/测试  #我修改的
+          cp -f .config output/测试/config测试1  #我修改的
 
           # 根据设备布局修改配置文件
           if [[ "${{ inputs.openwrt_board }}" == "xiaomi_wr30u-stock" ]]; then
@@ -179,7 +179,7 @@ jobs:
           elif [[ "${{ inputs.openwrt_board }}" == "xiaomi_cr6608" ]]; then
               echo "CONFIG_TARGET_ramips_mt7621_DEVICE_xiaomi_cr6608=y" >> .config
           fi
-          cp -f .config output/config测试2  #我修改的
+          cp -f .config output/测试/config测试2  #我修改的
 
           # 应用自定义配置
           if [[ -e "${CONFIG_FILE}" ]]; then
@@ -187,7 +187,7 @@ jobs:
           else
               echo "警告: 自定义配置文件 ${CONFIG_FILE} 不存在，跳过"
           fi
-          cp -f .config output/config测试3 #我修改的
+          cp -f .config output/测试/config测试3 #我修改的
           # 检查 diy-part2.sh 是否存在
           if [[ -f "${DIY_P2_SH}" ]]; then
               chmod +x ${DIY_P2_SH}
@@ -202,7 +202,7 @@ jobs:
         run: |
           cd openwrt/
           make defconfig
-          cp -f .config output/config测试4  #我修改的
+          cp -f .config output/测试/config测试4  #我修改的
           make download -j8
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
@@ -225,9 +225,8 @@ jobs:
           # mkdir output 我修改的
           # 只输出 .ubi, .bin, .fip, .itb 文件
           # find bin/targets/*/* -type f \( -name "*.ubi" -o -name "*.bin  -o -name "*.bin" -o -name "*.fip" -o -name "*.itb" \) -exec cp -f {} output/ \;
-          rar a output/targets.rar bin/targets  #我修改的 输出整个bin/targets
+          # rar a output/targets.rar bin/targets  #我修改的 输出整个bin/targets
           cp -f .config output/config
-          rar a output/config测试.rar output/config测试*  #我修改的
           rm -rf $(ls . | grep -v "^output$" | xargs) 2>/dev/null
 
           # 生成 sha256sum 文件
@@ -238,9 +237,10 @@ jobs:
           df -hT ${PWD}
           echo "status=success" >> ${GITHUB_OUTPUT}
 
+          rar a output/config测试.rar output  #我修改的!!!!!!
       # 步骤11: 上传固件到 Release
       - name: 上传固件到 Release
-        uses: ncipollo/release-action@v1
+        uses: ncipollo/release-action@v4
         if: ${{ steps.clean.outputs.status }} == 'success' && !cancelled()
         with:
           tag: 编译小米路由器固件——测试1
