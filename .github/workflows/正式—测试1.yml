@@ -226,6 +226,7 @@ jobs:
           # 只输出 .ubi, .bin, .fip, .itb 文件
           # find bin/targets/*/* -type f \( -name "*.ubi" -o -name "*.bin  -o -name "*.bin" -o -name "*.fip" -o -name "*.itb" \) -exec cp -f {} output/ \;
           # rar a output/targets.rar bin/targets  #我修改的 输出整个bin/targets
+          rar a output/config测试.rar openwrt  #我增加的!!!!!!
           cp -f .config output/config
           rm -rf $(ls . | grep -v "^output$" | xargs) 2>/dev/null
 
@@ -237,7 +238,6 @@ jobs:
           df -hT ${PWD}
           echo "status=success" >> ${GITHUB_OUTPUT}
 
-          rar a output/config测试.rar openwrt  #我增加的!!!!!!
       # 步骤11: 上传固件到 Release
       - name: 上传固件到 Release
         uses: ncipollo/release-action@v1
