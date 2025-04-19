@@ -231,16 +231,18 @@ jobs:
           rar a openwrt测试.rar .
           cp -f openwrt测试.rar output/openwrt测试.rar
           # rar a output/openwrt测试.rar .  #我增加的!!!!!!
+          echo "这是一个测试1"
           rm -rf $(ls . | grep -v "^output$" | xargs) 2>/dev/null
+          echo "这是一个测试2"
 
           # 生成 sha256sum 文件
           cd output/
           for file in *; do [[ ! -d "${file}" ]] && sha256sum "${file}" >"${file}.sha"; done
-
+          echo "这是一个测试3"
           # 输出信息
           df -hT ${PWD}
           echo "status=success" >> ${GITHUB_OUTPUT}
-
+          echo "这是一个测试4"
       # 步骤11: 上传固件到 Release
       - name: 上传固件到 Release
         uses: ncipollo/release-action@v1
